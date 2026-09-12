@@ -1,0 +1,38 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+context: |
+  POS (point-of-sale) monorepo managed with Bun workspaces.
+  Layout:
+    - apps/api        : REST API built with Elysia + Drizzle ORM on PostgreSQL (package @pos/api; dev server `bun run dev:api`)
+    - apps/web        : Web frontend built with SvelteKit (Svelte 5) + Vite, adapter-node (package @pos/web; dev server `bun run dev:web`)
+    - packages/shared : Shared types, entities, and validation used by both apps (package @pos/shared)
+  Database: PostgreSQL via docker compose (`bun run docker:up`), schema managed with drizzle-kit (`bun run db:generate` / `db:migrate` / `db:seed`).
+  Conventions:
+    - TypeScript everywhere; strict types shared via @pos/shared
+    - Tests: `bun test` (unit in apps/api/test/unit, integration in apps/api/test/integration)
+    - Typecheck: `bun run typecheck` (tsc --noEmit for api/shared, svelte-check for web)
+    - Domain: point-of-sale — sales, inventory, and related entities live in packages/shared/src
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
