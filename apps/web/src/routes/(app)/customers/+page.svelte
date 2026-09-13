@@ -3,6 +3,7 @@
   import { get, post, patch, formatIDR, formatDateTime } from '$lib/api';
   import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { Icon } from '$lib/icons';
   import { permissions } from '$lib/permissions';
 
   interface Customer {
@@ -91,13 +92,13 @@
   <div class="page-header">
     <h1>Customers</h1>
     {#if canCreate}
-      <button class="primary" onclick={openCreate}>+ Tambah Pelanggan</button>
+      <button class="primary" onclick={openCreate}><Icon icon="mdi:plus" width="16" height="16" /> Tambah Pelanggan</button>
     {/if}
   </div>
 
   <div class="toolbar">
     <input placeholder="Cari nama / telepon / email…" bind:value={search} onkeydown={(e) => e.key === 'Enter' && load()} />
-    <button onclick={load}>Cari</button>
+    <button onclick={load} title="Cari" aria-label="Cari"><Icon icon="mdi:magnify" width="15" height="15" /> Cari</button>
   </div>
 
   {#if loading}
@@ -114,7 +115,7 @@
               <td class="muted">{c.email ?? '—'}</td>
               <td><button class="link" onclick={() => viewHistory(c)}>Riwayat</button></td>
               <td style="display:flex;gap:.4rem">
-                {#if canUpdate}<button onclick={() => openEdit(c)}>Edit</button>{/if}
+                {#if canUpdate}<button class="act" title="Edit pelanggan" aria-label="Edit" onclick={() => openEdit(c)}><Icon icon="mdi:pencil" width="15" height="15" /></button>{/if}
               </td>
             </tr>
           {:else}

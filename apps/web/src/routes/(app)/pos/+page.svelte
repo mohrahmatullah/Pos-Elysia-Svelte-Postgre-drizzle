@@ -3,6 +3,7 @@
   import { get, post, formatIDR } from '$lib/api';
   import { cart, totals, orderDiscount, addToCart, setQuantity, removeLine, clearCart } from '$lib/stores/cart';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { Icon } from '$lib/icons';
 
   interface Product {
     id: string;
@@ -156,7 +157,7 @@
     </div>
 
     <div class="cart card">
-      <h2>Keranjang</h2>
+      <h2 class="cart-title"><Icon icon="mdi:cart-outline" width="18" height="18" /> Keranjang</h2>
       {#if $cart.length === 0}
         <p class="muted">Keranjang kosong. Klik produk untuk menambah.</p>
       {:else}
@@ -173,7 +174,7 @@
                 <button onclick={() => setQuantity(line.product_id, line.quantity + 1)}>+</button>
               </div>
               <div class="sum">{formatIDR(line.price * line.quantity - line.discount)}</div>
-              <button class="danger x" onclick={() => removeLine(line.product_id)}>✕</button>
+              <button class="danger x" title="Hapus item" aria-label="Hapus item" onclick={() => removeLine(line.product_id)}><Icon icon="mdi:close" width="15" height="15" /></button>
             </div>
           {/each}
         </div>
@@ -198,7 +199,7 @@
         </div>
 
         <button class="primary pay" onclick={openPayment} disabled={$cart.length === 0}>
-          BAYAR (F8) — {formatIDR($totals.grandTotal)}
+          <Icon icon="mdi:cash-check" width="18" height="18" /> BAYAR (F8) — {formatIDR($totals.grandTotal)}
         </button>
       {/if}
     </div>
@@ -244,7 +245,7 @@
 {#if receipt}
   <div class="overlay" role="dialog">
     <div class="modal receipt card">
-      <h2>✅ Transaksi Berhasil</h2>
+      <h2 class="ok-title"><Icon icon="mdi:check-circle-outline" width="20" height="20" /> Transaksi Berhasil</h2>
       <div class="receipt-body" id="receipt-print">
         <div class="center"><strong>TOKO MAJU JAYA</strong></div>
         <div class="center muted">{new Date(receipt.created_at).toLocaleString('id-ID')}</div>
@@ -267,8 +268,8 @@
         <p class="center muted">Terima kasih telah berbelanja!</p>
       </div>
       <div class="actions">
-        <button onclick={newTransaction}>Transaksi Baru</button>
-        <button class="primary" onclick={printReceipt}>🖨️ Cetak</button>
+        <button onclick={newTransaction}><Icon icon="mdi:plus" width="15" height="15" /> Transaksi Baru</button>
+        <button class="primary" onclick={printReceipt}><Icon icon="mdi:printer" width="15" height="15" /> Cetak</button>
       </div>
     </div>
   </div>
@@ -328,6 +329,11 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+  }
+  .cart-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
   .cart h2 {
     margin: 0 0 0.5rem;
@@ -421,6 +427,8 @@
   .receipt .center {
     text-align: center;
   }
+  .receipt h2 { display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.5rem; font-size: 1.05rem; }
+  .receipt h2 :global(svg) { color: #16a34a; }
   .inv {
     text-align: center;
     font-size: 1.05rem;

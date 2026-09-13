@@ -319,10 +319,10 @@
     <h1>Role &amp; Permission</h1>
     <div style="display:flex;gap:.5rem">
       {#if selectedRoleId && canEditPerms}
-        <button onclick={save} disabled={!dirty}>{saving ? 'Menyimpan…' : 'Simpan Permission'}</button>
-        <button class="danger" onclick={deleteRole}>Hapus Role</button>
+        <button onclick={save} disabled={!dirty}><Icon icon="mdi:content-save-outline" width="15" height="15" /> {saving ? 'Menyimpan…' : 'Simpan Permission'}</button>
+        <button class="danger" onclick={deleteRole}><Icon icon="mdi:trash-can-outline" width="15" height="15" /> Hapus Role</button>
       {/if}
-      <button class="primary" onclick={() => (showCreate = true)}>+ Role Baru</button>
+      <button class="primary" onclick={() => (showCreate = true)}><Icon icon="mdi:plus" width="16" height="16" /> Role Baru</button>
     </div>
   </div>
 
@@ -346,7 +346,7 @@
               {#if role.id === selectedRoleId && dirty}<span class="dirty-dot">•</span>{/if}
             </button>
             {#if role.name !== 'owner'}
-              <button class="icon" title="Rename role" onclick={() => openRename(role)}>✏️</button>
+              <button class="icon" title="Rename role" aria-label="Rename role" onclick={() => openRename(role)}><Icon icon="mdi:pencil" width="15" height="15" /></button>
             {/if}
           </div>
         {/each}
@@ -376,12 +376,14 @@
           {/if}
         </div>        {#if isOwner}
           <p class="muted note">
-            🔒 Role <strong>owner</strong> otomatis mendapat semua permission (seed) dan tidak dapat diubah
+            <Icon icon="mdi:lock-outline" width="15" height="15" />
+            Role <strong>owner</strong> otomatis mendapat semua permission (seed) dan tidak dapat diubah
             atau dihapus untuk mencegah terkunci dari sistem. Struktur di bawah mengikuti menu sidebar.
           </p>
         {:else}
           <p class="muted note">
-            💡 Struktur mengikuti <strong>menu sidebar</strong>: grup → halaman → permission-nya.
+            <Icon icon="mdi:information-outline" width="15" height="15" />
+            Struktur mengikuti <strong>menu sidebar</strong>: grup → halaman → permission-nya.
             Centang <strong>Semua</strong> di level grup untuk mengaktifkan seluruh isinya sekaligus.
           </p>
         {/if}
@@ -662,7 +664,12 @@
     border-radius: var(--radius);
     padding: 0.6rem 0.9rem;
     max-width: 720px;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
   }
+  .note :global(svg) { flex-shrink: 0; color: var(--accent, #2f6fe0); }
+  button :global(svg) { flex-shrink: 0; }
   .modal {
     width: min(420px, 100%);
   }

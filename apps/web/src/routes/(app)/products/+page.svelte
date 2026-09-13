@@ -4,6 +4,7 @@
   import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
   import { permissions } from '$lib/permissions';
+  import { Icon } from '$lib/icons';
 
   interface Product {
     id: string;
@@ -160,7 +161,7 @@
   <div class="page-header">
     <h1>Products</h1>
     {#if canCreate}
-      <button class="primary" onclick={openCreate}>+ Tambah Produk</button>
+      <button class="primary" onclick={openCreate}><Icon icon="mdi:plus" width="16" height="16" /> Tambah Produk</button>
     {/if}
   </div>
 
@@ -177,7 +178,7 @@
       <option value="true">Aktif</option>
       <option value="false">Nonaktif</option>
     </select>
-    <button onclick={() => load(1)}>Cari</button>
+    <button onclick={() => load(1)} title="Cari" aria-label="Cari"><Icon icon="mdi:magnify" width="15" height="15" /> Cari</button>
   </div>
 
   {#if loading}
@@ -199,9 +200,9 @@
               <td><span class="badge {p.active ? 'green' : 'gray'}">{p.active ? 'Aktif' : 'Nonaktif'}</span></td>
               {#if canUpdate || canDelete}
                 <td style="display:flex;gap:.4rem">
-                  {#if canUpdate}<button onclick={() => openEdit(p)}>Edit</button>{/if}
+                  {#if canUpdate}<button class="act" title="Edit produk" aria-label="Edit" onclick={() => openEdit(p)}><Icon icon="mdi:pencil" width="15" height="15" /></button>{/if}
                   {#if canDelete && p.active}
-                    <button class="danger" onclick={() => deactivate(p)}>Nonaktifkan</button>
+                    <button class="danger act" title="Nonaktifkan produk" aria-label="Nonaktifkan" onclick={() => deactivate(p)}><Icon icon="mdi:cancel" width="15" height="15" /></button>
                   {/if}
                 </td>
               {/if}

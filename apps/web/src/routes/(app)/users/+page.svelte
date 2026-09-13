@@ -4,6 +4,7 @@
   import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
   import { permissions } from '$lib/permissions';
+  import { Icon } from '$lib/icons';
 
   interface UserRow {
     id: string;
@@ -89,7 +90,7 @@
   <div class="page-header">
     <h1>Users</h1>
     {#if canCreate}
-      <button class="primary" onclick={openCreate}>+ Tambah User</button>
+      <button class="primary" onclick={openCreate}><Icon icon="mdi:plus" width="16" height="16" /> Tambah User</button>
     {/if}
   </div>
 
@@ -106,7 +107,7 @@
               <td class="mono">{u.email}</td>
               <td><span class="badge {u.role === 'owner' ? 'green' : u.role === 'manager' ? 'amber' : 'gray'}">{u.role}</span></td>
               <td><span class="badge {u.status === 'active' ? 'green' : 'red'}">{u.status === 'active' ? 'Aktif' : 'Nonaktif'}</span></td>
-              <td>{#if canUpdate}<button onclick={() => openEdit(u)}>Edit</button>{/if}</td>
+              <td>{#if canUpdate}<button class="act" title="Edit user" aria-label="Edit" onclick={() => openEdit(u)}><Icon icon="mdi:pencil" width="15" height="15" /></button>{/if}</td>
             </tr>
           {/each}
         </tbody>

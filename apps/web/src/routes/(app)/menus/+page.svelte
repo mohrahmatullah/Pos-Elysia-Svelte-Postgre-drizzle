@@ -157,7 +157,7 @@
 <div class="page">
   <div class="page-header">
     <h1>Menus</h1>
-    <button class="primary" onclick={openCreate}>+ Menu Baru</button>
+    <button class="primary" onclick={openCreate}><Icon icon="mdi:plus" width="16" height="16" /> Menu Baru</button>
   </div>
 
   <p class="muted small">
@@ -178,8 +178,11 @@
             <tr class:group-row={!node.row.href}>
               <td class="mono">{node.row.sort_order}</td>
               <td>
-                <strong>{node.row.icon ? `${node.row.icon} ` : ''}{node.row.label}</strong>
-                {#if !node.row.href}<span class="badge amber">grup</span>{/if}
+                <span class="menu-label">
+                  {#if node.row.icon}{#if isIconifyName(node.row.icon)}<Icon icon={node.row.icon} width="15" height="15" />{:else}<span>{node.row.icon}</span>{/if}{/if}
+                  <strong>{node.row.label}</strong>
+                  {#if !node.row.href}<span class="badge amber">grup</span>{/if}
+                </span>
               </td>
               <td class="mono">{node.row.href ?? '—'}</td>
               <td>{#if node.row.permission_code}<span class="badge gray mono">{node.row.permission_code}</span>{:else}<span class="muted">—</span>{/if}</td>
@@ -189,14 +192,19 @@
                 </button>
               </td>
               <td style="display:flex;gap:.4rem">
-                <button onclick={() => openEdit(node.row)}>Edit</button>
-                <button class="danger" onclick={() => remove(node.row)}>Hapus</button>
+                <button class="act" title="Edit menu" aria-label="Edit" onclick={() => openEdit(node.row)}><Icon icon="mdi:pencil" width="15" height="15" /></button>
+                <button class="danger act" title="Hapus menu" aria-label="Hapus" onclick={() => remove(node.row)}><Icon icon="mdi:trash-can-outline" width="15" height="15" /></button>
               </td>
             </tr>
             {#each node.children as m (m.id)}
               <tr>
                 <td class="mono muted">{m.sort_order}</td>
-                <td class="child-cell">↳ {m.icon ? `${m.icon} ` : ''}{m.label}</td>
+                <td class="child-cell">
+                  <span class="menu-label">
+                    {#if m.icon}{#if isIconifyName(m.icon)}<Icon icon={m.icon} width="14" height="14" />{:else}<span>{m.icon}</span>{/if}{/if}
+                    <span>{m.label}</span>
+                  </span>
+                </td>
                 <td class="mono">{m.href}</td>
                 <td><span class="badge gray mono">{m.permission_code ?? '—'}</span></td>
                 <td>
@@ -205,8 +213,8 @@
                   </button>
                 </td>
                 <td style="display:flex;gap:.4rem">
-                  <button onclick={() => openEdit(m)}>Edit</button>
-                  <button class="danger" onclick={() => remove(m)}>Hapus</button>
+                  <button class="act" title="Edit menu" aria-label="Edit" onclick={() => openEdit(m)}><Icon icon="mdi:pencil" width="15" height="15" /></button>
+                  <button class="danger act" title="Hapus menu" aria-label="Hapus" onclick={() => remove(m)}><Icon icon="mdi:trash-can-outline" width="15" height="15" /></button>
                 </td>
               </tr>
             {/each}
@@ -386,6 +394,16 @@
   .child-cell {
     padding-left: 1.6rem;
     color: var(--text-dim);
+  }
+  .menu-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+  }
+  .menu-label :global(svg) {
+    color: var(--accent);
+    flex-shrink: 0;
   }
   .icon-pick {
     border: 1px solid var(--border);

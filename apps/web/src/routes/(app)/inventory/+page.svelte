@@ -3,6 +3,7 @@
   import { get, post, formatDateTime } from '$lib/api';
   import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { Icon } from '$lib/icons';
   import { permissions } from '$lib/permissions';
 
   interface StockRow {
@@ -102,7 +103,7 @@
 
   <div class="toolbar">
     <input placeholder="Cari produk…" bind:value={search} onkeydown={(e) => e.key === 'Enter' && load()} />
-    <button onclick={load}>Cari</button>
+    <button onclick={load} title="Cari" aria-label="Cari"><Icon icon="mdi:magnify" width="15" height="15" /> Cari</button>
   </div>
 
   {#if loading}
@@ -124,7 +125,7 @@
                 </span>
               </td>
               {#if canAdjust}
-                <td><button onclick={() => openAdjust(r)}>Adjust</button></td>
+                <td><button class="act" title="Adjust stok" onclick={() => openAdjust(r)}><Icon icon="mdi:swap-horizontal" width="15" height="15" /> Adjust</button></td>
               {/if}
             </tr>
           {:else}

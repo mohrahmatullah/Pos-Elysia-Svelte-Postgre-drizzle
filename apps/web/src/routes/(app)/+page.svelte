@@ -3,6 +3,7 @@
   import { get, formatIDR } from '$lib/api';
   import SkeletonCard from '$lib/components/SkeletonCard.svelte';
   import { toastError } from '$lib/stores/toast';
+  import { Icon } from '$lib/icons';
 
   interface Dashboard {
     summary: { sales_today: string; transactions: number; avg_transaction: string; gross: string; discount: string; tax: string; net: string };
@@ -107,7 +108,7 @@
     </div>
 
     <div class="card">
-      <h3>⚠️ Stok Menipis</h3>
+      <h3 class="warn-title"><Icon icon="mdi:alert-outline" width="17" height="17" /> Stok Menipis</h3>
       {#if data.low_stock.length === 0}
         <p class="muted">Semua stok aman.</p>
       {:else}
@@ -144,6 +145,12 @@
   .small {
     font-size: 0.82rem;
   }
+  .warn-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .warn-title :global(svg) { color: #d97706; }
   .grid2 {
     display: grid;
     grid-template-columns: 1fr 1fr;

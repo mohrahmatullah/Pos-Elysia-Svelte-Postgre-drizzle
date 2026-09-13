@@ -68,11 +68,28 @@ button {
   color: var(--text);
   border-radius: var(--radius);
   padding: 0.5rem 0.9rem;
+  /* Icon alignment: buttons are flex rows so icon + label stay centered and evenly gapped */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  line-height: 1.2;
   transition:
     background 0.15s,
     border-color 0.15s,
     transform 0.06s ease,
     box-shadow 0.15s;
+}
+
+/* Icons inside buttons never stretch, shrink, or drift off-center */
+button svg {
+  flex-shrink: 0;
+}
+
+/* Inline icons (in paragraphs, table cells, headings without flex) align with text */
+svg {
+  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 button:hover:not(:disabled) {
@@ -101,6 +118,27 @@ button.primary {
   border-color: var(--accent-strong);
   color: #fff;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+/* Compact icon-only / icon+label action buttons used in table rows */
+button.act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.55rem;
+  line-height: 1;
+}
+
+/* Square icon-only buttons (no visible label) */
+button.icon-only {
+  padding: 0.35rem;
+  width: 2rem;
+  height: 2rem;
 }
 
 button.primary:hover:not(:disabled) {

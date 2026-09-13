@@ -153,7 +153,10 @@
 </div>
 
 {#each $toasts as t (t.id)}
-  <div class="toast {t.kind}">{t.message}</div>
+  <div class="toast {t.kind}">
+    <Icon icon={t.kind === 'success' ? 'mdi:check-circle-outline' : t.kind === 'error' ? 'mdi:alert-circle-outline' : 'mdi:information-outline'} width="17" height="17" />
+    <span>{t.message}</span>
+  </div>
 {/each}
 
 <style>
@@ -167,6 +170,13 @@
     font-size: 0.9rem;
     z-index: 100;
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: min(360px, calc(100vw - 2.4rem));
+  }
+  .toast :global(svg) {
+    flex-shrink: 0;
   }
   .toast.success {
     background: var(--green);

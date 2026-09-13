@@ -3,6 +3,7 @@
   import { get, post, formatIDR, formatDateTime } from '$lib/api';
   import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { Icon } from '$lib/icons';
   import { permissions } from '$lib/permissions';
 
   interface SaleRow {
@@ -137,7 +138,7 @@
         <option value={value}>{label}</option>
       {/each}
     </select>
-    <button onclick={() => load(1)}>Cari</button>
+    <button onclick={() => load(1)} title="Cari" aria-label="Cari"><Icon icon="mdi:magnify" width="15" height="15" /> Cari</button>
   </div>
 
   {#if loading}
@@ -147,8 +148,7 @@
       <table>
         <thead><tr><th>Invoice</th><th>Waktu</th><th>Total</th><th>Status</th></tr></thead>
         <tbody>
-          {#each sales as s (s.id)}
-            <tr onclick={() => openDetail(s)} style="cursor:pointer">
+          {#each sales as s (s.id)}              <tr onclick={() => openDetail(s)} style="cursor:pointer" title="Lihat detail">
               <td class="mono">{s.invoice_number}</td>
               <td class="muted">{formatDateTime(s.created_at)}</td>
               <td><strong>{formatIDR(s.grand_total)}</strong></td>
@@ -219,8 +219,8 @@
         <label for="ret-reason">Alasan retur (jika ada)</label>
         <input id="ret-reason" bind:value={returnReason} placeholder="Contoh: barang cacat" />
         <div class="actions">
-          {#if canCancel}<button class="danger" onclick={cancelSale} disabled={busy}>Batalkan Transaksi</button>{/if}
-          {#if canReturn}<button class="primary" onclick={submitReturn} disabled={busy || !returnReason.trim()}>Proses Retur</button>{/if}
+          {#if canCancel}<button class="danger" onclick={cancelSale} disabled={busy}><Icon icon="mdi:cancel" width="15" height="15" /> Batalkan Transaksi</button>{/if}
+          {#if canReturn}<button class="primary" onclick={submitReturn} disabled={busy || !returnReason.trim()}><Icon icon="mdi:swap-horizontal" width="15" height="15" /> Proses Retur</button>{/if}
         </div>
       {/if}
       <div class="actions">
