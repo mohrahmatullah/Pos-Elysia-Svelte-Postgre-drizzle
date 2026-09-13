@@ -162,7 +162,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
       body: t.Object({
         label: t.String({ minLength: 1, maxLength: 80 }),
         href: t.Optional(t.Nullable(t.String({ maxLength: 200 }))),
-        icon: t.Optional(t.Nullable(t.String({ maxLength: 10 }))),
+        icon: t.Optional(t.Nullable(t.String({ maxLength: 100 }))),
         parent_id: t.Optional(t.Nullable(t.String({ format: 'uuid' }))),
         permission_code: t.Optional(t.Nullable(t.String({ maxLength: 100 }))),
         sort_order: t.Optional(t.Number({ minimum: 0 })),
@@ -216,7 +216,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
       body: t.Object({
         label: t.Optional(t.String({ minLength: 1, maxLength: 80 })),
         href: t.Optional(t.Nullable(t.String({ maxLength: 200 }))),
-        icon: t.Optional(t.Nullable(t.String({ maxLength: 10 }))),
+        icon: t.Optional(t.Nullable(t.String({ maxLength: 100 }))),
         parent_id: t.Optional(t.Nullable(t.String({ format: 'uuid' }))),
         permission_code: t.Optional(t.Nullable(t.String({ maxLength: 100 }))),
         sort_order: t.Optional(t.Number({ minimum: 0 })),

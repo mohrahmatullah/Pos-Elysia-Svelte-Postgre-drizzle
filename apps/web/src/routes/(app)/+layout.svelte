@@ -6,6 +6,7 @@
   import { logout } from '$lib/auth';
   import { permissions, loadPermissions } from '$lib/permissions';
   import { menuItems, loadMenus, clearMenus } from '$lib/menu';
+  import { Icon, isIconifyName } from '$lib/icons';
 
   let { children } = $props();
 
@@ -24,6 +25,9 @@
   });
 
   const nav = $derived($menuItems);
+
+  /** Render helper: Iconify component for icon names, plain text otherwise (emoji). */
+  const hasIcon = (icon: string | null): boolean => Boolean(icon && icon.trim());
 
   /** Groups with an active child (or an active own href) start expanded. */
   const isExpanded = (groupId: string): boolean => {
@@ -46,22 +50,40 @@
         {#if group.href}
           <!-- Standalone link item (may still nest children beneath it) -->
           <a href={group.href} class:active={isActive(group.href)}>
-            {group.icon ? `${group.icon} ` : ''}{group.label}
+            {#if hasIcon(group.icon)}
+              {#if isIconifyName(group.icon)}<Icon icon={group.icon} width="18" height="18" />{:else}<span>{group.icon}</span>{/if}
+            {/if}
+            <span>{group.label}</span>
           </a>
           {#if group.children.length > 0}
             <div class="sub">
               {#each group.children as child (child.id)}
-                <a href={child.href} class:active={isActive(child.href)}>{child.icon ? `${child.icon} ` : ''}{child.label}</a>
+                <a href={child.href} class:active={isActive(child.href)}>
+                  {#if hasIcon(child.icon)}
+                    {#if isIconifyName(child.icon)}<Icon icon={child.icon} width="16" height="16" />{:else}<span>{child.icon}</span>{/if}
+                  {/if}
+                  <span>{child.label}</span>
+                </a>
               {/each}
             </div>
           {/if}
         {:else}
           <!-- Group header: collapsible section, visible only with >=1 permitted child -->
           <details open={isExpanded(group.id)} class="group">
-            <summary>{group.icon ? `${group.icon} ` : ''}{group.label}</summary>
+            <summary>
+              {#if hasIcon(group.icon)}
+                {#if isIconifyName(group.icon)}<Icon icon={group.icon} width="18" height="18" />{:else}<span>{group.icon}</span>{/if}
+              {/if}
+              <span>{group.label}</span>
+            </summary>
             <div class="sub">
               {#each group.children as child (child.id)}
-                <a href={child.href} class:active={isActive(child.href)}>{child.icon ? `${child.icon} ` : ''}{child.label}</a>
+                <a href={child.href} class:active={isActive(child.href)}>
+                  {#if hasIcon(child.icon)}
+                    {#if isIconifyName(child.icon)}<Icon icon={child.icon} width="16" height="16" />{:else}<span>{child.icon}</span>{/if}
+                  {/if}
+                  <span>{child.label}</span>
+                </a>
               {/each}
             </div>
           </details>
@@ -122,6 +144,13 @@
     padding: 0.5rem 0.7rem;
     border-radius: 8px;
     font-size: 0.92rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  nav a :global(svg),
+  details.group summary :global(svg) {
+    flex-shrink: 0;
   }
   nav a:hover {
     color: var(--text);

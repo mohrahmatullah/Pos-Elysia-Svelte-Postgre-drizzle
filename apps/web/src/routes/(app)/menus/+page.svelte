@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
   import { get, post, patch, del } from '$lib/api';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { Icon, filterIconChoices, isIconifyName, normalizeIconInput } from '$lib/icons';
 
   interface MenuRow {
     id: string;
@@ -35,6 +36,10 @@
     }));
   });
 
+  // Icon picker state (shared by create + edit modals)
+  let iconQuery = $state('');
+  const iconChoices = $derived(filterIconChoices(iconQuery));
+
   // Create modal
   let showCreate = $state(false);
   let form = $state({ label: '', href: '', icon: '', permission_code: '', sort_order: 0, asGroup: false, parent_id: '' });
@@ -42,6 +47,17 @@
   // Edit modal
   let editing = $state<MenuRow | null>(null);
   let editForm = $state({ label: '', href: '', icon: '', permission_code: '', sort_order: 0, active: true, parent_id: '' });
+
+  function pickIcon(icon: string) {
+    if (editing) editForm.icon = icon;
+    else form.icon = icon;
+  }
+
+  function openCreate() {
+    form = { label: '', href: '', icon: '', permission_code: '', sort_order: 0, asGroup: false, parent_id: '' };
+    iconQuery = '';
+    showCreate = true;
+  }
 
   async function load() {
     loading = true;
@@ -64,8 +80,8 @@
       await post('/menus', {
         label: form.label,
         href: isGroup ? null : form.href || null,
-        icon: form.icon || undefined,
-        permission_code: isGroup ? (form.permission_code || null) : form.permission_code || null,
+        icon: normalizeIconInput(form.icon),
+        permission_code: form.permission_code || null,
         parent_id: form.parent_id || null,
         sort_order: form.sort_order || undefined,
       });
@@ -100,7 +116,7 @@
       await patch(`/menus/${editing.id}`, {
         label: editForm.label,
         href: editForm.href || null,
-        icon: editForm.icon || null,
+        icon: normalizeIconInput(editForm.icon),
         permission_code: editForm.permission_code || null,
         parent_id: editForm.parent_id || null,
         sort_order: editForm.sort_order,
@@ -140,7 +156,7 @@
 <div class="page">
   <div class="page-header">
     <h1>Menus</h1>
-    <button class="primary" onclick={() => (showCreate = true)}>+ Menu Baru</button>
+    <button class="primary" onclick={openCreate}>+ Menu Baru</button>
   </div>
 
   <p class="muted small">
@@ -224,8 +240,37 @@
           <option value={g.id}>{g.label}</option>
         {/each}
       </select>
-      <label for="m-icon">Icon (emoji, opsional)</label>
-      <input id="m-icon" bind:value={form.icon} placeholder="🧾" maxlength={10} />
+      <label for="m-icon">Icon (Iconify name atau emoji)</label>
+      <input id="m-icon" bind:value={form.icon} placeholder="mdi:cart-outline" maxlength={60} />
+      <div class="icon-pick">
+        <input class="icon-search" bind:value={iconQuery} placeholder="Cari icon… (contoh: cart, laporan, user)" />
+        <div class="icon-grid">
+          {#each iconChoices as c (c.name)}
+            <button
+              type="button"
+              class="icon-btn"
+              class:selected={form.icon === c.name}
+              title={c.name}
+              onclick={() => pickIcon(c.name)}
+            >
+              <Icon icon={c.name} width="26" height="26" />
+            </button>
+          {:else}
+            <span class="muted small">Tidak ada yang cocok — ketik nama Iconify manual di atas.</span>
+          {/each}
+        </div>
+        {#if form.icon}
+          <div class="icon-preview">
+            <span class="icon-preview-box">
+              <Icon icon={isIconifyName(form.icon) ? form.icon : 'mdi:help-circle-outline'} width="40" height="40" />
+            </span>
+            <div>
+              <strong class="mono">{form.icon}</strong>
+              <p class="muted small">Seperti ini nanti tampilnya di sidebar.</p>
+            </div>
+          </div>
+        {/if}
+      </div>
       <label for="m-perm">Permission code {form.asGroup ? '(opsional — untuk mengunci seluruh grup)' : '*'}</label>
       <input id="m-perm" bind:value={form.permission_code} placeholder="taxreport.view" maxlength={100} />
       <p class="muted small">Jika kode belum ada di katalog, otomatis dibuat dan diberikan ke owner.</p>
@@ -260,8 +305,37 @@
           <option value={g.id}>{g.label}</option>
         {/each}
       </select>
-      <label for="e-icon">Icon (emoji)</label>
-      <input id="e-icon" bind:value={editForm.icon} maxlength={10} />
+      <label for="e-icon">Icon (Iconify name atau emoji)</label>
+      <input id="e-icon" bind:value={editForm.icon} placeholder="mdi:cart-outline" maxlength={60} />
+      <div class="icon-pick">
+        <input class="icon-search" bind:value={iconQuery} placeholder="Cari icon… (contoh: cart, laporan, user)" />
+        <div class="icon-grid">
+          {#each iconChoices as c (c.name)}
+            <button
+              type="button"
+              class="icon-btn"
+              class:selected={editForm.icon === c.name}
+              title={c.name}
+              onclick={() => pickIcon(c.name)}
+            >
+              <Icon icon={c.name} width="26" height="26" />
+            </button>
+          {:else}
+            <span class="muted small">Tidak ada yang cocok — ketik nama Iconify manual di atas.</span>
+          {/each}
+        </div>
+        {#if editForm.icon}
+          <div class="icon-preview">
+            <span class="icon-preview-box">
+              <Icon icon={isIconifyName(editForm.icon) ? editForm.icon : 'mdi:help-circle-outline'} width="40" height="40" />
+            </span>
+            <div>
+              <strong class="mono">{editForm.icon}</strong>
+              <p class="muted small">Seperti ini nanti tampilnya di sidebar.</p>
+            </div>
+          </div>
+        {/if}
+      </div>
       <label for="e-perm">Permission code</label>
       <input id="e-perm" bind:value={editForm.permission_code} maxlength={100} />
       <label for="e-sort">Urutan tampil</label>
@@ -321,5 +395,53 @@
   .child-cell {
     padding-left: 1.6rem;
     color: var(--text-dim);
+  }
+  .icon-pick {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem;
+    margin-bottom: 0.4rem;
+  }
+  .icon-search {
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+  .icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 0.35rem;
+    max-height: 230px;
+    overflow-y: auto;
+  }
+  .icon-btn {
+    display: grid;
+    place-items: center;
+    padding: 0.45rem 0;
+    border-radius: 6px;
+  }
+  .icon-btn:hover {
+    background: var(--bg-card);
+  }
+  .icon-btn.selected {
+    background: var(--accent-strong);
+    color: #fff;
+  }
+  .icon-preview {
+    margin-top: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .icon-preview-box {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-card);
+  }
+  .small {
+    font-size: 0.82rem;
   }
 </style>

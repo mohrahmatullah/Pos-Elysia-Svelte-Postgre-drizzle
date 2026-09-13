@@ -170,31 +170,31 @@ async function main() {
   }
 
   // Top-level standalone
-  await ensureItem({ label: 'Dashboard', href: '/', icon: '📊', permission_code: 'dashboard.view', parent_id: null, sort_order: 10 });
+  await ensureItem({ label: 'Dashboard', href: '/', icon: 'mdi:view-dashboard-outline', permission_code: 'dashboard.view', parent_id: null, sort_order: 10 });
 
   // Group: Master Data
-  const masterId = await ensureGroup('Master Data', '🗃️', 20);
-  await ensureItem({ label: 'Products', href: '/products', icon: '📦', permission_code: 'product.view', parent_id: masterId, sort_order: 21 });
-  await ensureItem({ label: 'Inventory', href: '/inventory', icon: '🏷️', permission_code: 'inventory.view', parent_id: masterId, sort_order: 22 });
-  await ensureItem({ label: 'Customers', href: '/customers', icon: '👥', permission_code: 'customer.view', parent_id: masterId, sort_order: 23 });
+  const masterId = await ensureGroup('Master Data', 'mdi:database-outline', 20);
+  await ensureItem({ label: 'Products', href: '/products', icon: 'mdi:package-variant-closed', permission_code: 'product.view', parent_id: masterId, sort_order: 21 });
+  await ensureItem({ label: 'Inventory', href: '/inventory', icon: 'mdi:warehouse', permission_code: 'inventory.view', parent_id: masterId, sort_order: 22 });
+  await ensureItem({ label: 'Customers', href: '/customers', icon: 'mdi:account-group-outline', permission_code: 'customer.view', parent_id: masterId, sort_order: 23 });
 
   // Group: Transaksi
-  const trxId = await ensureGroup('Transaksi', '💼', 30);
-  await ensureItem({ label: 'POS / Kasir', href: '/pos', icon: '🛒', permission_code: 'sales.create', parent_id: trxId, sort_order: 31 });
-  await ensureItem({ label: 'Riwayat Sales', href: '/sales', icon: '🧾', permission_code: 'sales.view', parent_id: trxId, sort_order: 32 });
+  const trxId = await ensureGroup('Transaksi', 'mdi:briefcase-outline', 30);
+  await ensureItem({ label: 'POS / Kasir', href: '/pos', icon: 'mdi:point-of-sale', permission_code: 'sales.create', parent_id: trxId, sort_order: 31 });
+  await ensureItem({ label: 'Riwayat Sales', href: '/sales', icon: 'mdi:receipt-text-outline', permission_code: 'sales.view', parent_id: trxId, sort_order: 32 });
 
   // Group: Laporan (group-gated: the header carries report.view for its children)
-  const reportId = await ensureGroup('Laporan', '📈', 40);
+  const reportId = await ensureGroup('Laporan', 'mdi:chart-box-outline', 40);
   await db.update(s.menus).set({ permission_code: 'report.view', updated_at: new Date() }).where(eq(s.menus.id, reportId));
-  await ensureItem({ label: 'Reports', href: '/reports', icon: '📊', permission_code: 'report.view', parent_id: reportId, sort_order: 41 });
+  await ensureItem({ label: 'Reports', href: '/reports', icon: 'mdi:file-chart-outline', permission_code: 'report.view', parent_id: reportId, sort_order: 41 });
 
   // Group: Sistem
-  const sysId = await ensureGroup('Sistem', '⚙️', 50);
-  await ensureItem({ label: 'Users', href: '/users', icon: '👤', permission_code: 'user.manage', parent_id: sysId, sort_order: 51 });
-  await ensureItem({ label: 'Role & Permission', href: '/roles', icon: '🔐', permission_code: 'user.manage', parent_id: sysId, sort_order: 52 });
-  await ensureItem({ label: 'Menus', href: '/menus', icon: '🧭', permission_code: 'user.manage', parent_id: sysId, sort_order: 53 });
-  await ensureItem({ label: 'Audit Log', href: '/audit', icon: '📜', permission_code: 'audit.view', parent_id: sysId, sort_order: 54 });
-  await ensureItem({ label: 'Store Settings', href: '/settings', icon: '⚙️', permission_code: 'settings.manage', parent_id: sysId, sort_order: 55 });
+  const sysId = await ensureGroup('Sistem', 'mdi:cog-outline', 50);
+  await ensureItem({ label: 'Users', href: '/users', icon: 'mdi:account-key-outline', permission_code: 'user.manage', parent_id: sysId, sort_order: 51 });
+  await ensureItem({ label: 'Role & Permission', href: '/roles', icon: 'mdi:shield-account-outline', permission_code: 'user.manage', parent_id: sysId, sort_order: 52 });
+  await ensureItem({ label: 'Menus', href: '/menus', icon: 'mdi:compass-outline', permission_code: 'user.manage', parent_id: sysId, sort_order: 53 });
+  await ensureItem({ label: 'Audit Log', href: '/audit', icon: 'mdi:text-box-search-outline', permission_code: 'audit.view', parent_id: sysId, sort_order: 54 });
+  await ensureItem({ label: 'Store Settings', href: '/settings', icon: 'mdi:cog-outline', permission_code: 'settings.manage', parent_id: sysId, sort_order: 55 });
 
   // Cleanup: stray row from an earlier partial grouped seed (no /categories page exists)
   await db.delete(s.menus).where(eq(s.menus.href, '/categories'));
