@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get, post, patch } from '$lib/api';
+  import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { permissions } from '$lib/permissions';
 
   interface UserRow {
     id: string;
@@ -22,6 +24,10 @@
   let editing = $state<UserRow | null>(null);
   let form = $state({ name: '', email: '', password: '', role: 'cashier', status: 'active' });
   let saving = $state(false);
+
+  // Granular gates: user.view (page), user.create (+ Tambah), user.update (Edit).
+  const canCreate = $derived($permissions.permissions.has('user.create'));
+  const canUpdate = $derived($permissions.permissions.has('user.update'));
 
   async function load() {
     loading = true;
@@ -82,11 +88,13 @@
 <div class="page">
   <div class="page-header">
     <h1>Users</h1>
-    <button class="primary" onclick={openCreate}>+ Tambah User</button>
+    {#if canCreate}
+      <button class="primary" onclick={openCreate}>+ Tambah User</button>
+    {/if}
   </div>
 
   {#if loading}
-    <p class="muted">Memuat…</p>
+    <SkeletonTable rows={5} cols={4} />
   {:else}
     <div class="card" style="padding:0">
       <table>
@@ -98,7 +106,7 @@
               <td class="mono">{u.email}</td>
               <td><span class="badge {u.role === 'owner' ? 'green' : u.role === 'manager' ? 'amber' : 'gray'}">{u.role}</span></td>
               <td><span class="badge {u.status === 'active' ? 'green' : 'red'}">{u.status === 'active' ? 'Aktif' : 'Nonaktif'}</span></td>
-              <td><button onclick={() => openEdit(u)}>Edit</button></td>
+              <td>{#if canUpdate}<button onclick={() => openEdit(u)}>Edit</button>{/if}</td>
             </tr>
           {/each}
         </tbody>
@@ -142,15 +150,7 @@
 {/if}
 
 <style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: grid;
-    place-items: center;
-    z-index: 50;
-  }
-  .modal { width: 420px; }
+  .modal { width: min(420px, 100%); }
   .modal h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
   .actions {
     display: flex;

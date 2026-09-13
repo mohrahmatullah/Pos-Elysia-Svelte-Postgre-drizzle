@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get, formatDateTime } from '$lib/api';
+  import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastError } from '$lib/stores/toast';
 
   interface AuditRow {
@@ -59,7 +60,7 @@
   </div>
 
   {#if loading}
-    <p class="muted">Memuat…</p>
+    <SkeletonTable rows={8} cols={4} />
   {:else}
     <div class="card" style="padding:0">
       <table>

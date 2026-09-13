@@ -24,7 +24,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
     '/',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'user.manage');
+        const auth = requirePerm(user, 'user.view');
         const { page, limit, offset } = parsePagination(query);
         const where = query.search
           ? and(
@@ -52,7 +52,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'user.manage');
+        const auth = requirePerm(user, 'user.create');
         const [role] = await db.select().from(roles).where(eq(roles.name, body.role as 'owner')).limit(1);
         if (!role) throw Errors.validation('Role tidak valid');
         const passwordHash = await hashPassword(body.password);
@@ -96,7 +96,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
     '/:id',
     async ({ params, body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'user.manage');
+        const auth = requirePerm(user, 'user.update');
         const patch: Record<string, unknown> = { updated_at: new Date() };
         if (body.name !== undefined) patch.name = body.name;
         if (body.status !== undefined) patch.status = body.status;

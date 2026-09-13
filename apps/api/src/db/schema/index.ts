@@ -120,8 +120,20 @@ export const ROLE_PERMISSION_CODES = [
   'customer.delete',
   // settings
   'settings.manage',
-  // users (only owner in MVP scope)
+  // users (granular: view list, create, edit profile/role/status/password)
+  'user.view',
+  'user.create',
+  'user.update',
   'user.manage',
+  // roles (dynamic role CRUD)
+  'role.create',
+  'role.update',
+  'role.delete',
+  // menus (dynamic sidebar administration)
+  'menu.view',
+  'menu.create',
+  'menu.update',
+  'menu.delete',
   // reports
   'report.view',
   // audit
@@ -150,7 +162,17 @@ export const PERMISSION_LABEL: Record<PermissionCode, string> = {
   'customer.update': 'Update customers',
   'customer.delete': 'Delete customers',
   'settings.manage': 'Manage store settings',
-  'user.manage': 'Manage users',
+  'user.view': 'View users',
+  'user.create': 'Create users',
+  'user.update': 'Update users',
+  'user.manage': 'Manage users & assign role permissions',
+  'role.create': 'Create roles',
+  'role.update': 'Rename roles',
+  'role.delete': 'Delete roles',
+  'menu.view': 'View menus',
+  'menu.create': 'Create menus',
+  'menu.update': 'Update menus',
+  'menu.delete': 'Delete menus',
   'report.view': 'View reports',
   'audit.view': 'View audit log',
 };

@@ -13,6 +13,7 @@ import { hashPassword } from '../lib/password';
 import * as s from './schema';
 import { ROLE_PERMISSIONS } from '../lib/permissions';
 import { upsertPermissionCatalog } from './permission';
+import { grantMissingPermissionsToOwner } from './permission-catalog';
 import { db, pool } from './index';
 
 const DEFAULT_PASSWORD = 'Passw0rd!';
@@ -48,6 +49,9 @@ async function main() {
 
   // ------------- Permission catalog: explicit rows in `permissions` table --------
   await upsertPermissionCatalog();
+  // Catalog codes added later (e.g. menu.*) are granted to the owner here so a
+  // re-seed keeps the owner complete without a runtime owner rule.
+  await grantMissingPermissionsToOwner();
   console.log('   Permission catalog synced');
 
   // ---- Role permissions: seed defaults ONLY for roles with no rows (no UI clobber) ----
@@ -190,9 +194,9 @@ async function main() {
 
   // Group: Sistem
   const sysId = await ensureGroup('Sistem', 'mdi:cog-outline', 50);
-  await ensureItem({ label: 'Users', href: '/users', icon: 'mdi:account-key-outline', permission_code: 'user.manage', parent_id: sysId, sort_order: 51 });
+  await ensureItem({ label: 'Users', href: '/users', icon: 'mdi:account-key-outline', permission_code: 'user.view', parent_id: sysId, sort_order: 51 });
   await ensureItem({ label: 'Role & Permission', href: '/roles', icon: 'mdi:shield-account-outline', permission_code: 'user.manage', parent_id: sysId, sort_order: 52 });
-  await ensureItem({ label: 'Menus', href: '/menus', icon: 'mdi:compass-outline', permission_code: 'user.manage', parent_id: sysId, sort_order: 53 });
+  await ensureItem({ label: 'Menus', href: '/menus', icon: 'mdi:compass-outline', permission_code: 'menu.view', parent_id: sysId, sort_order: 53 });
   await ensureItem({ label: 'Audit Log', href: '/audit', icon: 'mdi:text-box-search-outline', permission_code: 'audit.view', parent_id: sysId, sort_order: 54 });
   await ensureItem({ label: 'Store Settings', href: '/settings', icon: 'mdi:cog-outline', permission_code: 'settings.manage', parent_id: sysId, sort_order: 55 });
 

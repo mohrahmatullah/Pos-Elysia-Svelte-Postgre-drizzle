@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get, patch } from '$lib/api';
+  import SkeletonCard from '$lib/components/SkeletonCard.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
 
   interface StoreSettings {
@@ -86,6 +87,8 @@
       </div>
     </div>
   {:else}
-    <p class="muted">Memuat…</p>
+    <div class="card" style="max-width:560px" aria-busy="true">
+      <SkeletonCard lines={6} />
+    </div>
   {/if}
 </div>

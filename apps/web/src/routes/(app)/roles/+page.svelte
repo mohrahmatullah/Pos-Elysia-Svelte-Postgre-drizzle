@@ -6,6 +6,7 @@
    */
   import { onMount } from 'svelte';
   import { get, post, put, patch, del } from '$lib/api';
+  import Skeleton from '$lib/components/Skeleton.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
 
   interface RoleRow {
@@ -226,7 +227,11 @@
     <!-- Left: dynamic role list -->
     <div class="card roles" style="padding:0">
       {#if loadingRoles}
-        <p class="muted" style="padding:1rem">Memuat…</p>
+        <div class="space-y-2 p-3" aria-busy="true">
+          {#each Array(3) as _, i (i)}
+            <Skeleton height="2.4rem" radius="0.5rem" />
+          {/each}
+        </div>
       {:else}
         {#each roles as role (role.id)}
           <div class="role-item" class:active={role.id === selectedRoleId}>
@@ -250,7 +255,11 @@
       {#if !selectedRoleId}
         <p class="muted">Pilih role di kiri, atau buat role baru untuk mengatur permission.</p>
       {:else if loadingPerms}
-        <p class="muted">Memuat permission…</p>
+        <div class="space-y-3" aria-busy="true">
+          {#each Array(4) as _, i (i)}
+            <Skeleton height="1.6rem" radius="0.4rem" />
+          {/each}
+        </div>
       {:else}
         <div class="card head-card">
           <div>
@@ -445,16 +454,8 @@
     padding: 0.6rem 0.9rem;
     max-width: 720px;
   }
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: grid;
-    place-items: center;
-    z-index: 50;
-  }
   .modal {
-    width: 420px;
+    width: min(420px, 100%);
   }
   .modal h2 {
     margin: 0 0 0.5rem;

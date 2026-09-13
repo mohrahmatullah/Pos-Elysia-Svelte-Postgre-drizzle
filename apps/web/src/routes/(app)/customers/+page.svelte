@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get, post, patch, formatIDR, formatDateTime } from '$lib/api';
+  import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
   import { permissions } from '$lib/permissions';
 
@@ -100,7 +101,7 @@
   </div>
 
   {#if loading}
-    <p class="muted">Memuat…</p>
+    <SkeletonTable rows={6} cols={5} />
   {:else}
     <div class="card" style="padding:0">
       <table>
@@ -181,15 +182,7 @@
 {/if}
 
 <style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: grid;
-    place-items: center;
-    z-index: 50;
-  }
-  .modal { width: 520px; max-height: 85vh; overflow-y: auto; }
+  .modal { width: min(520px, 100%); }
   .modal h2 { margin: 0 0 0.4rem; font-size: 1.05rem; }
   .actions {
     display: flex;

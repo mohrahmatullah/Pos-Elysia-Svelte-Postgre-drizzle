@@ -385,18 +385,8 @@
     font-size: 1rem;
     padding: 0.7rem;
   }
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: grid;
-    place-items: center;
-    z-index: 50;
-  }
   .modal {
-    width: 380px;
-    max-height: 90vh;
-    overflow-y: auto;
+    width: min(380px, 100%);
   }
   .modal h2 {
     margin: 0 0 0.6rem;

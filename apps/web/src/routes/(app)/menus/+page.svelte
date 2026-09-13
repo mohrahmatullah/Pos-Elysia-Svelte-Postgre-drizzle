@@ -5,6 +5,7 @@
    */
   import { onMount } from 'svelte';
   import { get, post, patch, del } from '$lib/api';
+  import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
   import { Icon, filterIconChoices, isIconifyName, normalizeIconInput } from '$lib/icons';
 
@@ -166,7 +167,7 @@
   </p>
 
   {#if loading}
-    <p class="muted">Memuat…</p>
+    <SkeletonTable rows={6} cols={4} />
   {:else}
     <div class="card" style="padding:0">
       <table>
@@ -359,18 +360,8 @@
   .small {
     font-size: 0.85rem;
   }
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: grid;
-    place-items: center;
-    z-index: 50;
-  }
   .modal {
-    width: 440px;
-    max-height: 90vh;
-    overflow-y: auto;
+    width: min(440px, 100%);
   }
   .modal h2 {
     margin: 0 0 0.5rem;

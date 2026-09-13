@@ -1,5 +1,7 @@
 <script lang="ts">
   import { get, formatIDR } from '$lib/api';
+  import SkeletonCard from '$lib/components/SkeletonCard.svelte';
+  import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastError } from '$lib/stores/toast';
 
   type Tab = 'sales' | 'products' | 'payments' | 'stock' | 'cashiers';
@@ -103,7 +105,11 @@
   </div>
 
   {#if loading}
-    <p class="muted">Memuat…</p>
+    <div class="cards" aria-busy="true">
+      {#each Array(4) as _, i (i)}
+        <SkeletonCard lines={2} />
+      {/each}
+    </div>
   {:else if tab === 'sales' && sales}
     <div class="cards">
       <div class="card"><div class="muted small">Transaksi</div><div class="big">{sales.total_transactions}</div></div>

@@ -3,6 +3,8 @@
  * - DELETE cascades to `role_permissions` (FK ON DELETE CASCADE) and unlinks users first.
  * - 'owner' is protected: cannot be renamed or deleted (system role).
  * Users whose role is deleted must be reassigned first (sentinel check).
+ * Mutations are gated by role.create / role.update / role.delete; the list endpoint
+ * stays open to any authenticated user (role pickers in other pages need it).
  */
 import Elysia, { t } from 'elysia';
 import { asc, eq, sql } from 'drizzle-orm';
@@ -50,7 +52,7 @@ export const roleRoutes = new Elysia({ prefix: '/roles' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const me = requirePerm(user, 'user.manage');
+        const me = requirePerm(user, 'role.create');
         const name = body.name.trim().toLowerCase();
         if (!name) throw Errors.validation('Nama role wajib diisi');
 
@@ -106,7 +108,7 @@ export const roleRoutes = new Elysia({ prefix: '/roles' })
     '/:id',
     async ({ params, body, user, request }) => {
       try {
-        const me = requirePerm(user, 'user.manage');
+        const me = requirePerm(user, 'role.update');
         const role = await db.query.roles.findFirst({ where: eq(schema.roles.id, params.id) });
         if (!role) throw Errors.notFound('Role tidak ditemukan');
         if (role.name === PROTECTED_ROLE) throw Errors.forbidden('Role owner tidak dapat diubah');
@@ -147,7 +149,7 @@ export const roleRoutes = new Elysia({ prefix: '/roles' })
     '/:id',
     async ({ params, user, request }) => {
       try {
-        const me = requirePerm(user, 'user.manage');
+        const me = requirePerm(user, 'role.delete');
         const role = await db.query.roles.findFirst({ where: eq(schema.roles.id, params.id) });
         if (!role) throw Errors.notFound('Role tidak ditemukan');
         if (role.name === PROTECTED_ROLE) throw Errors.forbidden('Role owner tidak dapat dihapus');

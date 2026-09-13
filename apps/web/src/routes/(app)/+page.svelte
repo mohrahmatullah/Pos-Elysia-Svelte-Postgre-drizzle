@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get, formatIDR } from '$lib/api';
+  import SkeletonCard from '$lib/components/SkeletonCard.svelte';
   import { toastError } from '$lib/stores/toast';
 
   interface Dashboard {
@@ -58,7 +59,11 @@
   </div>
 
   {#if loading}
-    <p class="muted">Memuat…</p>
+    <div class="cards" aria-busy="true">
+      {#each Array(4) as _, i (i)}
+        <SkeletonCard lines={2} />
+      {/each}
+    </div>
   {:else if data}
     <div class="cards">
       <div class="card"><div class="muted small">Penjualan</div><div class="big">{formatIDR(data.summary.net)}</div></div>

@@ -2,8 +2,9 @@
  * - Parent rows (href null) are GROUP HEADERS: no link, visible when >=1 child visible.
  * - Children carry a permission; children of permission-less group headers inherit the
  *   group's permission as their gate.
- * - Mutations require 'user.manage'. New permission codes are auto-created in the
- *   catalog and auto-granted to the owner role.
+ * - Mutations require granular codes (menu.view / menu.create / menu.update /
+ *   menu.delete). New permission codes are auto-created in the catalog and
+ *   auto-granted to the owner role.
  */
 import Elysia, { t } from 'elysia';
 import { asc, eq } from 'drizzle-orm';
@@ -12,7 +13,7 @@ import { ok, handleRouteError } from '../../lib/response';
 import { auth, requireUser, requirePerm } from '../../middleware/auth';
 import { writeAudit } from '../../lib/audit';
 import { Errors } from '../../lib/errors';
-import { ensurePermission } from '../../db/permission-catalog';
+import { ensurePermission, removeOrphanedMenuPermission } from '../../db/permission-catalog';
 import { buildPermissionSet } from '../../db/permission';
 
 /** A menu with a link must carry a permission (group headers without links may omit it). */
@@ -34,8 +35,8 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
     '/my',
     async ({ user }) => {
       try {
-        const me = requireUser(user);
-        const fresh = await buildPermissionSet(me.roleId);
+      const me = requireUser(user);
+      const fresh = await buildPermissionSet(me.roleId);
 
         const rows = await db
           .select({
@@ -107,7 +108,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
     '/',
     async ({ user }) => {
       try {
-        requirePerm(user, 'user.manage');
+        requirePerm(user, 'menu.view');
         const rows = await db.select().from(schema.menus).orderBy(asc(schema.menus.sort_order), asc(schema.menus.label));
         return ok(rows);
       } catch (e) {
@@ -119,7 +120,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const me = requirePerm(user, 'user.manage');
+        const me = requirePerm(user, 'menu.create');
         validateMenu(body);
 
         let permission_code: string | null = null;
@@ -174,7 +175,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
     '/:id',
     async ({ params, body, user, request }) => {
       try {
-        const me = requirePerm(user, 'user.manage');
+        const me = requirePerm(user, 'menu.update');
         const [existing] = await db.select().from(schema.menus).where(eq(schema.menus.id, params.id)).limit(1);
         if (!existing) throw Errors.notFound('Menu tidak ditemukan');
 
@@ -183,6 +184,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
         }
         validateMenu(body, existing);
 
+        const oldCode = existing.permission_code;
         const patch: Record<string, unknown> = { updated_at: new Date() };
         if (body.label !== undefined) patch.label = body.label.trim();
         if (body.href !== undefined) patch.href = body.href?.trim() || null;
@@ -194,6 +196,12 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
 
         const [updated] = await db.update(schema.menus).set(patch).where(eq(schema.menus.id, params.id)).returning();
         if (!updated) throw Errors.notFound('Menu tidak ditemukan');
+
+        // If the menu switched permission codes, drop the old code once no other
+        // menu uses it — keeps the catalog free of orphaned test codes.
+        if (oldCode && oldCode !== updated.permission_code) {
+          await removeOrphanedMenuPermission(oldCode, updated.id);
+        }
 
         await writeAudit({
           storeId: me.storeId,
@@ -228,13 +236,18 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
     '/:id',
     async ({ params, user, request }) => {
       try {
-        const me = requirePerm(user, 'user.manage');
+        const me = requirePerm(user, 'menu.delete');
         // Deleting a group header cascades to its children (FK ON DELETE cascade).
         const [deleted] = await db
           .delete(schema.menus)
           .where(eq(schema.menus.id, params.id))
-          .returning({ id: schema.menus.id, label: schema.menus.label });
+          .returning({ id: schema.menus.id, label: schema.menus.label, permission_code: schema.menus.permission_code });
         if (!deleted) throw Errors.notFound('Menu tidak ditemukan');
+
+        // Drop the menu's permission code if no other menu uses it anymore.
+        if (deleted.permission_code) {
+          await removeOrphanedMenuPermission(deleted.permission_code);
+        }
 
         await writeAudit({
           storeId: me.storeId,

@@ -1,3 +1,28 @@
+@import 'tailwindcss';
+
+/*
+ * Enterprise POS theme — dark, modern, professional.
+ * Tailwind v4 @theme tokens map CSS variables into utility classes
+ * (e.g. bg-surface-2, text-dim, border-edge, accent/strong, ok/bad/warn).
+ */
+@theme {
+  --color-base: #0f1115;
+  --color-surface-1: #171a21;
+  --color-surface-2: #1d212b;
+  --color-edge: #2a2f3a;
+  --color-ink: #e8eaf0;
+  --color-dim: #9aa1af;
+  --color-accent: #4f8cff;
+  --color-strong: #2f6fe0;
+  --color-ok: #2ecc71;
+  --color-bad: #ff5c5c;
+  --color-warn: #ffb020;
+
+  --radius-card: 10px;
+  --radius-ctl: 10px;
+}
+
+/* Legacy variable aliases — existing components keep working unchanged. */
 :root {
   --bg: #0f1115;
   --bg-soft: #171a21;
@@ -19,10 +44,15 @@
 
 body {
   margin: 0;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
+  -webkit-tap-highlight-color: transparent;
 }
 
 a {
@@ -38,11 +68,27 @@ button {
   color: var(--text);
   border-radius: var(--radius);
   padding: 0.5rem 0.9rem;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.06s ease,
+    box-shadow 0.15s;
 }
 
 button:hover:not(:disabled) {
   border-color: var(--accent);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 button:disabled {
@@ -100,6 +146,13 @@ label {
   padding: 1rem;
 }
 
+/* Card-wrapped data tables scroll horizontally on narrow screens
+   instead of overflowing the page. */
+.card[style*="padding:0"],
+.card[style*="padding: 0"] {
+  overflow-x: auto;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -140,10 +193,22 @@ tbody tr:hover {
   font-weight: 600;
 }
 
-.badge.green { background: rgba(46, 204, 113, 0.15); color: var(--green); }
-.badge.red { background: rgba(255, 92, 92, 0.15); color: var(--red); }
-.badge.amber { background: rgba(255, 176, 32, 0.15); color: var(--amber); }
-.badge.gray { background: rgba(154, 161, 175, 0.15); color: var(--text-dim); }
+.badge.green {
+  background: rgba(46, 204, 113, 0.15);
+  color: var(--green);
+}
+.badge.red {
+  background: rgba(255, 92, 92, 0.15);
+  color: var(--red);
+}
+.badge.amber {
+  background: rgba(255, 176, 32, 0.15);
+  color: var(--amber);
+}
+.badge.gray {
+  background: rgba(154, 161, 175, 0.15);
+  color: var(--text-dim);
+}
 
 .page {
   padding: 1.4rem;
@@ -175,4 +240,89 @@ tbody tr:hover {
 .error-text {
   color: var(--red);
   font-size: 0.85rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+ * Scrollbars — slim floating pill, Chrome/Edge/Safari + Firefox
+ * ============================================================ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3d4454 transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333a49;
+  border-radius: 999px;
+  border: 2px solid transparent; /* inset look without a visible track */
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #4a5468;
+}
+::-webkit-scrollbar-thumb:active {
+  background-color: #5a657e;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ============================================================
+ * Overlay + modal base (pages may override width only)
+ * ============================================================ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  animation: overlay-in 0.15s ease-out;
+}
+
+.modal {
+  width: min(460px, 100%);
+  max-height: 88vh;
+  max-height: 88dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* scroll stays inside the modal */
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.25rem;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.5),
+    0 4px 16px rgba(0, 0, 0, 0.35);
+  animation: modal-in 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+::selection {
+  background: rgba(79, 140, 255, 0.35);
 }
