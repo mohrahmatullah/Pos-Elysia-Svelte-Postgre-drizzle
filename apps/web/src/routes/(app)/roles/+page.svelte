@@ -8,6 +8,30 @@
   import { get, post, put, patch, del } from '$lib/api';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { Icon, isIconifyName } from '$lib/icons';
+
+  interface MenuRow {
+    id: string;
+    label: string;
+    icon: string | null;
+    href: string | null;
+    parent_id: string | null;
+    permission_code: string | null;
+  }
+
+  /** Node of the permission tree that mirrors the sidebar structure. */
+  interface MenuNode {
+    id: string;
+    label: string;
+    icon: string | null;
+    href: string | null;
+    permission_code: string | null;
+    children: MenuNode[];
+    /** Permission codes rendered at this node (its resource's full code list). */
+    codes: string[];
+    /** True when its resource was already rendered at the parent (e.g. Reports under Laporan). */
+    inherited: boolean;
+  }
 
   interface RoleRow {
     id: string;
@@ -39,6 +63,12 @@
   let resources = $state<Record<string, string[]>>({});
   let labels = $state<Record<string, string>>({});
   let resourceOrder = $state<string[]>([]);
+  /** Active sidebar menus from the backend (source for the permission tree). */
+  let menusList = $state<MenuRow[]>([]);
+  /** Tree mirroring the sidebar: Master Data -> Products -> product.* codes. */
+  let menuTree = $state<MenuNode[]>([]);
+  /** Catalog resources not tied to any menu (e.g. Category when no menu uses it). */
+  let extraGroups = $state<{ key: string; title: string; codes: string[] }[]>([]);
 
   const RESOURCE_TITLES: Record<string, string> = {
     dashboard: 'Dashboard',
@@ -49,9 +79,80 @@
     customer: 'Customer',
     settings: 'Settings',
     user: 'User',
+    role: 'Roles',
+    menu: 'Menus (Sidebar)',
     report: 'Reports',
     audit: 'Audit Log',
   };
+
+  const titleCase = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+  /** Full code list for a menu's permission: its resource group, or the code itself. */
+  function codesForCode(code: string): string[] {
+    const res = code.split('.')[0];
+    const list = resources[res];
+    return list && list.length > 0 ? list : [code];
+  }
+
+  /** Build the sidebar-mirrored tree + collect resources not covered by any menu. */
+  function rebuildTree(): void {
+    const byId = new Map<string, MenuNode>();
+    for (const m of menusList) {
+      byId.set(m.id, {
+        id: m.id,
+        label: m.label,
+        icon: m.icon,
+        href: m.href,
+        permission_code: m.permission_code,
+        children: [],
+        codes: [],
+        inherited: false,
+      });
+    }
+    const roots: MenuNode[] = [];
+    for (const m of menusList) {
+      const node = byId.get(m.id);
+      if (!node) continue;
+      const parent = m.parent_id ? byId.get(m.parent_id) : undefined;
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    }
+
+    const rendered = new Set<string>();
+    // Pass 1: page nodes (with href) or childless nodes claim their resource first,
+    // so codes render at the actual page (Products), not its group header.
+    const claim = (node: MenuNode): void => {
+      if (node.permission_code) {
+        const res = node.permission_code.split('.')[0];
+        if (rendered.has(res)) {
+          node.inherited = true;
+        } else if (node.href || node.children.length === 0) {
+          node.codes = codesForCode(node.permission_code);
+          rendered.add(res);
+        }
+      }
+      node.children.forEach(claim);
+    };
+    roots.forEach(claim);
+    // Pass 2: any remaining unclaimed resource renders at its node (e.g. a
+    // permission-less-link group whose children use other resources).
+    const claimLeftover = (node: MenuNode): void => {
+      if (node.permission_code && !node.inherited && node.codes.length === 0) {
+        const res = node.permission_code.split('.')[0];
+        if (!rendered.has(res)) {
+          node.codes = codesForCode(node.permission_code);
+          rendered.add(res);
+        }
+      }
+      node.children.forEach(claimLeftover);
+    };
+    roots.forEach(claimLeftover);
+
+    menuTree = roots;
+    extraGroups = resourceOrder
+      .filter((r) => !rendered.has(r))
+      .map((r) => ({ key: r, title: RESOURCE_TITLES[r] ?? titleCase(r), codes: resources[r] ?? [] }));
+  }
 
   const isOwner = $derived(selectedRoleName === 'owner');
   const canEditPerms = $derived(!isOwner && !saving && !loadingPerms);
@@ -77,12 +178,14 @@
   onMount(async () => {
     try {
       const [catalogRes] = await Promise.all([
-        get<{ resources: Record<string, string[]>; labels: Record<string, string> }>('/permissions'),
+        get<{ resources: Record<string, string[]>; labels: Record<string, string>; menus?: MenuRow[] }>('/permissions'),
         loadRoles(false).catch((e) => toastError((e as Error).message)),
       ]);
       resources = catalogRes.data.resources;
       labels = catalogRes.data.labels;
+      menusList = catalogRes.data.menus ?? [];
       resourceOrder = Object.keys(catalogRes.data.resources);
+      rebuildTree();
     } catch (e) {
       toastError((e as Error).message);
     } finally {
@@ -178,18 +281,18 @@
     selectedCodes = next;
   }
 
-  function toggleResource(resource: string, checked: boolean) {
+  /** Select/unselect a whole code list (menu node, sub-menu, or extra resource). */
+  function toggleCodes(codes: string[], checked: boolean) {
     if (!canEditPerms) return;
     const next = new Set(selectedCodes);
-    for (const code of resources[resource] ?? []) {
+    for (const code of codes) {
       if (checked) next.add(code);
       else next.delete(code);
     }
     selectedCodes = next;
   }
 
-  function isResourceAll(resource: string): boolean {
-    const codes = resources[resource] ?? [];
+  function isAllSelected(codes: string[]): boolean {
     return codes.length > 0 && codes.every((c) => selectedCodes.has(c));
   }
 
@@ -271,37 +374,95 @@
           {#if !isOwner}
             <button onclick={() => openRename({ id: selectedRoleId!, name: selectedRoleName })}>Rename</button>
           {/if}
-        </div>
-        {#if isOwner}
+        </div>        {#if isOwner}
           <p class="muted note">
             🔒 Role <strong>owner</strong> otomatis mendapat semua permission (seed) dan tidak dapat diubah
-            atau dihapus untuk mencegah terkunci dari sistem.
+            atau dihapus untuk mencegah terkunci dari sistem. Struktur di bawah mengikuti menu sidebar.
+          </p>
+        {:else}
+          <p class="muted note">
+            💡 Struktur mengikuti <strong>menu sidebar</strong>: grup → halaman → permission-nya.
+            Centang <strong>Semua</strong> di level grup untuk mengaktifkan seluruh isinya sekaligus.
           </p>
         {/if}
-        {#each resourceOrder as resource (resource)}
+
+        {#snippet nodePermRow(code: string)}
+          <label class="perm-row" class:disabled={isOwner}>
+            <input
+              type="checkbox"
+              checked={selectedCodes.has(code)}
+              disabled={isOwner}
+              onchange={(e) => toggle(code, e.currentTarget.checked)}
+            />
+            <div class="perm-main">
+              <span class="mono code">{code}</span>
+              <span class="muted small">{labels[code] ?? ''}</span>
+            </div>
+          </label>
+        {/snippet}
+
+        {#each menuTree as node (node.id)}
+          {@render menuNode(node, 0)}
+        {/each}
+
+        {#snippet menuNode(node: MenuNode, depth: number)}
+          <div class="card group node-{depth}">
+            <div class="group-head">
+              <div class="group-title">
+                {#if node.icon && isIconifyName(node.icon)}
+                  <Icon icon={node.icon} width="17" height="17" />
+                {:else if node.icon}
+                  <span>{node.icon}</span>
+                {/if}
+                <h3>{node.label}</h3>
+                {#if node.href}<span class="muted small mono">{node.href}</span>{/if}
+              </div>
+              {#if node.codes.length > 0}
+                <button
+                  class="ghost"
+                  disabled={isOwner}
+                  onclick={() => toggleCodes(node.codes, !isAllSelected(node.codes))}
+                >
+                  {isAllSelected(node.codes) ? 'Unselect All' : 'Semua'}
+                </button>
+              {/if}
+            </div>
+
+            {#if node.codes.length > 0}
+              <div class="code-list">
+                {#each node.codes as code (code)}
+                  {@render nodePermRow(code)}
+                {/each}
+              </div>
+            {:else if node.inherited}
+              <p class="muted small inherited-note">Permission-nya diatur pada menu induk di atas.</p>
+            {/if}
+
+            {#if node.children.length > 0}
+              <div class="children">
+                {#each node.children as child (child.id)}
+                  {@render menuNode(child, Math.min(depth + 1, 2))}
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/snippet}
+
+        {#each extraGroups as extra (extra.key)}
           <div class="card group">
             <div class="group-head">
-              <h3>{RESOURCE_TITLES[resource] ?? resource}</h3>
-              <button
-                class="ghost"
-                disabled={isOwner}
-                onclick={() => toggleResource(resource, !isResourceAll(resource))}
-              >
-                {isResourceAll(resource) ? 'Unselect All' : 'Select All'}
+              <div class="group-title">
+                <h3>{extra.title}</h3>
+              </div>
+              <button class="ghost" disabled={isOwner} onclick={() => toggleCodes(extra.codes, !isAllSelected(extra.codes))}>
+                {isAllSelected(extra.codes) ? 'Unselect All' : 'Semua'}
               </button>
             </div>
-            {#each resources[resource] as code (code)}
-              <label class="perm-row" class:disabled={isOwner}>
-                <input
-                  type="checkbox"
-                  checked={selectedCodes.has(code)}
-                  disabled={isOwner}
-                  onchange={(e) => toggle(code, e.currentTarget.checked)}
-                />
-                <span class="mono code">{code}</span>
-                <span class="muted">{labels[code] ?? ''}</span>
-              </label>
-            {/each}
+            <div class="code-list">
+              {#each extra.codes as code (code)}
+                {@render nodePermRow(code)}
+              {/each}
+            </div>
           </div>
         {/each}
       {/if}
@@ -422,19 +583,54 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.6rem;
     margin-bottom: 0.4rem;
+  }
+  .group-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .group-title :global(svg) {
+    color: var(--accent);
+    flex-shrink: 0;
   }
   .group-head h3 {
     margin: 0;
     font-size: 0.95rem;
   }
+  /* Depth nesting: group > page > (max) — mirrors the sidebar tree. */
+  .node-1 {
+    margin-left: 1.25rem;
+    border-left: 3px solid rgba(79, 140, 255, 0.45);
+  }
+  .node-2 {
+    margin-left: 2.5rem;
+    border-left: 3px solid rgba(79, 140, 255, 0.25);
+  }
+  .children {
+    margin-top: 0.55rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .code-list {
+    display: flex;
+    flex-direction: column;
+  }
   .perm-row {
     display: grid;
-    grid-template-columns: auto minmax(140px, auto) 1fr;
+    grid-template-columns: auto 1fr;
     align-items: center;
     gap: 0.7rem;
-    padding: 0.35rem 0;
+    padding: 0.4rem 0;
+    border-bottom: 1px dashed var(--border);
     cursor: pointer;
+  }
+  .perm-row:last-child {
+    border-bottom: none;
   }
   .perm-row.disabled {
     cursor: not-allowed;
@@ -444,8 +640,21 @@
     width: 16px;
     height: 16px;
   }
+  .perm-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
   .code {
     font-size: 0.85rem;
+  }
+  .perm-main .small {
+    font-size: 0.78rem;
+  }
+  .inherited-note {
+    margin: 0.3rem 0 0;
+    font-style: italic;
   }
   .note {
     background: var(--bg-soft);

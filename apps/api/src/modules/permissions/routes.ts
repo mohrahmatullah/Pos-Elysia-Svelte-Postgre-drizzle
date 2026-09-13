@@ -59,10 +59,27 @@ export const permissionRoutes = new Elysia({ prefix: '/permissions' })
       try {
         const me = requireUser(user);
         const { group, labels } = await buildResourceGroup();
+
+        // Active sidebar menus so the Role & Permission UI can mirror the menu
+        // tree (Master Data -> Products -> product.view/create/...) for easy mapping.
+        const menus = await db
+          .select({
+            id: schema.menus.id,
+            label: schema.menus.label,
+            icon: schema.menus.icon,
+            href: schema.menus.href,
+            parent_id: schema.menus.parent_id,
+            permission_code: schema.menus.permission_code,
+          })
+          .from(schema.menus)
+          .where(eq(schema.menus.active, true))
+          .orderBy(asc(schema.menus.sort_order), asc(schema.menus.label));
+
         return ok({
           resources: group,
           labels,
           selected: [...me.permissions],
+          menus,
         });
       } catch (e) {
         return handleRouteError(e);
