@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { get, post, patch, del, formatIDR } from '$lib/api';
   import { toastSuccess, toastError } from '$lib/stores/toast';
-  import { getUser } from '$lib/api';
+  import { permissions } from '$lib/permissions';
 
   interface Product {
     id: string;
@@ -62,7 +62,9 @@
   let saving = $state(false);
   let loading = $state(true);
 
-  const canManage = $derived(['owner', 'manager'].includes(getUser()?.role ?? ''));
+  const canCreate = $derived($permissions.permissions.has('product.create'));
+  const canUpdate = $derived($permissions.permissions.has('product.update'));
+  const canDelete = $derived($permissions.permissions.has('product.delete'));
 
   async function load(page = 1) {
     loading = true;
@@ -156,7 +158,7 @@
 <div class="page">
   <div class="page-header">
     <h1>Products</h1>
-    {#if canManage}
+    {#if canCreate}
       <button class="primary" onclick={openCreate}>+ Tambah Produk</button>
     {/if}
   </div>
@@ -183,7 +185,7 @@
     <div class="card" style="padding:0">
       <table>
         <thead>
-          <tr><th>SKU</th><th>Nama</th><th>Kategori</th><th>Harga Jual</th><th>Stok</th><th>Status</th>{#if canManage}<th></th>{/if}</tr>
+          <tr><th>SKU</th><th>Nama</th><th>Kategori</th><th>Harga Jual</th><th>Stok</th><th>Status</th>{#if canUpdate || canDelete}<th></th>{/if}</tr>
         </thead>
         <tbody>
           {#each products as p (p.id)}
@@ -194,10 +196,10 @@
               <td>{formatIDR(p.selling_price)}</td>
               <td><span class="badge {p.stock <= 0 ? 'red' : p.stock <= p.minimum_stock ? 'amber' : 'green'}">{p.stock}</span></td>
               <td><span class="badge {p.active ? 'green' : 'gray'}">{p.active ? 'Aktif' : 'Nonaktif'}</span></td>
-              {#if canManage}
+              {#if canUpdate || canDelete}
                 <td style="display:flex;gap:.4rem">
-                  <button onclick={() => openEdit(p)}>Edit</button>
-                  {#if p.active}
+                  {#if canUpdate}<button onclick={() => openEdit(p)}>Edit</button>{/if}
+                  {#if canDelete && p.active}
                     <button class="danger" onclick={() => deactivate(p)}>Nonaktifkan</button>
                   {/if}
                 </td>

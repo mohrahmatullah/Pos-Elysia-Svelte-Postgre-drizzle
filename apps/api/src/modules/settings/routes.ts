@@ -13,7 +13,7 @@ export const settingsRoutes = new Elysia({ prefix: '/settings' })
     '/',
     async ({ user }) => {
       try {
-        const auth = requirePerm(user, 'SYSTEM_SETTINGS');
+        const auth = requirePerm(user, 'settings.manage');
         const [store] = await db.select().from(stores).where(eq(stores.id, auth.storeId)).limit(1);
         return ok(store);
       } catch (e) {
@@ -25,7 +25,7 @@ export const settingsRoutes = new Elysia({ prefix: '/settings' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'SYSTEM_SETTINGS');
+        const auth = requirePerm(user, 'settings.manage');
         const patch: Record<string, unknown> = { updated_at: new Date() };
         for (const key of ['name', 'address', 'phone', 'receipt_footer', 'invoice_prefix', 'currency', 'timezone'] as const) {
           if (body[key] !== undefined) patch[key] = body[key];

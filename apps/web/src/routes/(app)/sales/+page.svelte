@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { get, post, formatIDR, formatDateTime } from '$lib/api';
   import { toastSuccess, toastError } from '$lib/stores/toast';
-  import { getUser } from '$lib/api';
+  import { permissions } from '$lib/permissions';
 
   interface SaleRow {
     id: string;
@@ -39,7 +39,8 @@
   let returnReason = $state('');
   let busy = $state(false);
 
-  const canCancelOrReturn = $derived(['owner', 'manager'].includes(getUser()?.role ?? ''));
+  const canCancel = $derived($permissions.permissions.has('sales.cancel'));
+  const canReturn = $derived($permissions.permissions.has('sales.return'));
 
   const statusBadge: Record<string, string> = {
     completed: 'green',
@@ -177,7 +178,7 @@
       <p class="muted small">{formatDateTime(detail.created_at)}</p>
 
       <table>
-        <thead><tr><th>Item</th><th>Qty</th><th>Harga</th><th>Subtotal</th>{#if canCancelOrReturn && detail.status === 'completed'}<th>Retur</th>{/if}</tr></thead>
+        <thead><tr><th>Item</th><th>Qty</th><th>Harga</th><th>Subtotal</th>{#if canReturn && detail.status === 'completed'}<th>Retur</th>{/if}</tr></thead>
         <tbody>
           {#each detail.items as item (item.id)}
             <tr>
@@ -190,7 +191,7 @@
               </td>
               <td>{formatIDR(item.unit_price)}</td>
               <td>{formatIDR(item.subtotal)}</td>
-              {#if canCancelOrReturn && detail.status === 'completed'}
+              {#if canReturn && detail.status === 'completed'}
                 <td>
                   {#if item.quantity - item.returned_quantity > 0}
                     <input class="ret-input" type="number" min="0" max={item.quantity - item.returned_quantity}
@@ -213,12 +214,12 @@
         {/each}
       </div>
 
-      {#if canCancelOrReturn && detail.status === 'completed'}
+      {#if (canCancel || canReturn) && detail.status === 'completed'}
         <label for="ret-reason">Alasan retur (jika ada)</label>
         <input id="ret-reason" bind:value={returnReason} placeholder="Contoh: barang cacat" />
         <div class="actions">
-          <button class="danger" onclick={cancelSale} disabled={busy}>Batalkan Transaksi</button>
-          <button class="primary" onclick={submitReturn} disabled={busy || !returnReason.trim()}>Proses Retur</button>
+          {#if canCancel}<button class="danger" onclick={cancelSale} disabled={busy}>Batalkan Transaksi</button>{/if}
+          {#if canReturn}<button class="primary" onclick={submitReturn} disabled={busy || !returnReason.trim()}>Proses Retur</button>{/if}
         </div>
       {/if}
       <div class="actions">

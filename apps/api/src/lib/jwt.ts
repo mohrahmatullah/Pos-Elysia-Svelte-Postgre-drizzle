@@ -17,6 +17,8 @@ export interface AccessPayload {
   sub: string;
   sid: string;
   role: string;
+  /** Role UUID — lets the backend resolve the DB-backed permission set per request. */
+  role_id: string;
   store_id: string;
   exp: number;
   iat: number;

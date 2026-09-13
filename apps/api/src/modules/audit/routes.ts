@@ -12,7 +12,7 @@ export const auditRoutes = new Elysia({ prefix: '/audit-logs' })
     '/',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'VIEW_AUDIT_LOG');
+        const auth = requirePerm(user, 'audit.view');
         const { page, limit, offset } = parsePagination(query);
         const conditions = [eq(auditLogs.store_id, auth.storeId)];
         if (query.action) conditions.push(eq(auditLogs.action, query.action));

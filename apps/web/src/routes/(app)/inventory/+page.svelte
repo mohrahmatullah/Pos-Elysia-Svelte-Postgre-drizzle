@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { get, post, formatDateTime } from '$lib/api';
   import { toastSuccess, toastError } from '$lib/stores/toast';
-  import { getUser } from '$lib/api';
+  import { permissions } from '$lib/permissions';
 
   interface StockRow {
     product_id: string;
@@ -36,7 +36,7 @@
   let reason = $state('');
   let saving = $state(false);
 
-  const canAdjust = $derived(['owner', 'manager'].includes(getUser()?.role ?? ''));
+  const canAdjust = $derived($permissions.permissions.has('inventory.adjust') || $permissions.permissions.has('inventory.opname'));
 
   async function load() {
     loading = true;

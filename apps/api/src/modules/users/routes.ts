@@ -24,7 +24,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
     '/',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_USERS');
+        const auth = requirePerm(user, 'user.manage');
         const { page, limit, offset } = parsePagination(query);
         const where = query.search
           ? and(
@@ -52,7 +52,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_USERS');
+        const auth = requirePerm(user, 'user.manage');
         const [role] = await db.select().from(roles).where(eq(roles.name, body.role as 'owner')).limit(1);
         if (!role) throw Errors.validation('Role tidak valid');
         const passwordHash = await hashPassword(body.password);
@@ -87,7 +87,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
         name: t.String({ minLength: 1 }),
         email: t.String({ format: 'email' }),
         password: t.String({ minLength: 8 }),
-        role: t.Union([t.Literal('owner'), t.Literal('manager'), t.Literal('cashier')]),
+        role: t.String({ minLength: 1 }),
         status: t.Optional(t.Union([t.Literal('active'), t.Literal('inactive')])),
       }),
     },
@@ -96,7 +96,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
     '/:id',
     async ({ params, body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_USERS');
+        const auth = requirePerm(user, 'user.manage');
         const patch: Record<string, unknown> = { updated_at: new Date() };
         if (body.name !== undefined) patch.name = body.name;
         if (body.status !== undefined) patch.status = body.status;
@@ -132,7 +132,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
     {
       body: t.Object({
         name: t.Optional(t.String()),
-        role: t.Optional(t.Union([t.Literal('owner'), t.Literal('manager'), t.Literal('cashier')])),
+        role: t.Optional(t.String({ minLength: 1 })),
         status: t.Optional(t.Union([t.Literal('active'), t.Literal('inactive')])),
         password: t.Optional(t.String()),
       }),

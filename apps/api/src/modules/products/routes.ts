@@ -38,7 +38,7 @@ export const productRoutes = new Elysia({ prefix: '/products' })
     '/',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_PRODUCT');
+        const auth = requirePerm(user, 'product.view');
         const { page, limit, offset } = parsePagination(query);
         const conditions = [eq(products.store_id, auth.storeId)];
         if (query.search) {
@@ -82,7 +82,7 @@ export const productRoutes = new Elysia({ prefix: '/products' })
     '/:id',
     async ({ params, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_PRODUCT');
+        const auth = requirePerm(user, 'product.view');
         const [row] = await db
           .select(productSelect)
           .from(products)
@@ -101,7 +101,7 @@ export const productRoutes = new Elysia({ prefix: '/products' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_PRODUCT');
+        const auth = requirePerm(user, 'product.create');
         const [created] = await db
           .insert(products)
           .values({
@@ -168,7 +168,7 @@ export const productRoutes = new Elysia({ prefix: '/products' })
     '/:id',
     async ({ params, body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_PRODUCT');
+        const auth = requirePerm(user, 'product.update');
         const patch: Record<string, unknown> = { updated_at: new Date() };
         if (body.name !== undefined) patch.name = body.name;
         if (body.description !== undefined) patch.description = body.description;
@@ -220,7 +220,7 @@ export const productRoutes = new Elysia({ prefix: '/products' })
     '/:id',
     async ({ params, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_PRODUCT');
+        const auth = requirePerm(user, 'product.delete');
         // Soft-delete (PRD 5.3: menonaktifkan produk; historis tetap utuh)
         const [updated] = await db
           .update(products)

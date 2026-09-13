@@ -1,11 +1,12 @@
 /** Auth service (PRD 5.1): login, refresh rotation, logout, session revocation. */
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { roles, sessions, users } from '../../db/schema';
 import { verifyPassword } from '../../lib/password';
 import { signAccessToken, generateRefreshToken, hashToken } from '../../lib/jwt';
 import { Errors } from '../../lib/errors';
 import { config } from '../../config';
+import { buildPermissionSet } from '../../db/permission';
 
 export interface LoginResult {
   accessToken: string;
@@ -17,6 +18,10 @@ export interface LoginResult {
     role: string;
     storeId: string;
   };
+  role: string;
+  roleId: string;
+  /** Filled by the route handler after login (DB-backed permission codes). */
+  permissions?: string[];
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {
@@ -29,6 +34,7 @@ export async function login(email: string, password: string): Promise<LoginResul
       password_hash: users.password_hash,
       store_id: users.store_id,
       role: roles.name,
+      role_id: roles.id,
     })
     .from(users)
     .innerJoin(roles, eq(users.role_id, roles.id))
@@ -49,7 +55,7 @@ export async function login(email: string, password: string): Promise<LoginResul
     .returning({ id: sessions.id });
 
   const accessToken = await signAccessToken(
-    { sub: row.id, sid: session.id, role: row.role, store_id: row.store_id },
+    { sub: row.id, sid: session.id, role: row.role, role_id: row.role_id, store_id: row.store_id },
     config.jwtSecret,
     config.accessTokenTtlMin,
   );
@@ -58,6 +64,8 @@ export async function login(email: string, password: string): Promise<LoginResul
     accessToken,
     refreshToken,
     user: { id: row.id, name: row.name, email: row.email, role: row.role, storeId: row.store_id },
+    role: row.role,
+    roleId: row.role_id,
   };
 }
 
@@ -78,7 +86,7 @@ export async function refresh(refreshToken: string): Promise<RefreshResult> {
   if (!session) throw Errors.unauthorized('Refresh token invalid or expired');
 
   const [user] = await db
-    .select({ id: users.id, status: users.status, store_id: users.store_id, role: roles.name })
+    .select({ id: users.id, status: users.status, store_id: users.store_id, role: roles.name, role_id: roles.id })
     .from(users)
     .innerJoin(roles, eq(users.role_id, roles.id))
     .where(eq(users.id, session.user_id))
@@ -100,7 +108,7 @@ export async function refresh(refreshToken: string): Promise<RefreshResult> {
   });
 
   const accessToken = await signAccessToken(
-    { sub: user.id, sid: session.id, role: user.role, store_id: user.store_id },
+    { sub: user.id, sid: session.id, role: user.role, role_id: user.role_id, store_id: user.store_id },
     config.jwtSecret,
     config.accessTokenTtlMin,
   );

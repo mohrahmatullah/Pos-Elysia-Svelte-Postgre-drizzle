@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { get, post, patch, formatIDR, formatDateTime } from '$lib/api';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { permissions } from '$lib/permissions';
 
   interface Customer {
     id: string;
@@ -25,6 +26,9 @@
   let form = $state({ name: '', phone: '', email: '', address: '', notes: '' });
   let saving = $state(false);
   let detail = $state<CustomerDetail | null>(null);
+
+  const canCreate = $derived($permissions.permissions.has('customer.create'));
+  const canUpdate = $derived($permissions.permissions.has('customer.update'));
 
   async function load() {
     loading = true;
@@ -85,7 +89,9 @@
 <div class="page">
   <div class="page-header">
     <h1>Customers</h1>
-    <button class="primary" onclick={openCreate}>+ Tambah Pelanggan</button>
+    {#if canCreate}
+      <button class="primary" onclick={openCreate}>+ Tambah Pelanggan</button>
+    {/if}
   </div>
 
   <div class="toolbar">
@@ -107,7 +113,7 @@
               <td class="muted">{c.email ?? '—'}</td>
               <td><button class="link" onclick={() => viewHistory(c)}>Riwayat</button></td>
               <td style="display:flex;gap:.4rem">
-                <button onclick={() => openEdit(c)}>Edit</button>
+                {#if canUpdate}<button onclick={() => openEdit(c)}>Edit</button>{/if}
               </td>
             </tr>
           {:else}

@@ -1,79 +1,50 @@
-/** Permission model (PRD 25 authorization matrix). */
-export type Permission =
-  | 'READ_DASHBOARD'
-  | 'MANAGE_USERS'
-  | 'SYSTEM_SETTINGS'
-  | 'MANAGE_PRODUCT'
-  | 'READ_PRODUCT'
-  | 'MANAGE_CATEGORY'
-  | 'STOCK_ADJUSTMENT'
-  | 'READ_INVENTORY'
-  | 'CREATE_SALE'
-  | 'APPLY_DISCOUNT'
-  | 'READ_SALE_OWN'
-  | 'READ_SALE_ALL'
-  | 'CANCEL_SALE'
-  | 'CREATE_RETURN'
-  | 'MANAGE_CUSTOMER'
-  | 'READ_CUSTOMER'
-  | 'VIEW_REPORTS'
-  | 'VIEW_AUDIT_LOG';
+/** Permission engine: compile-time typed codes, DB-backed runtime checks (PRD 25). */
+export type { PermissionCode } from '../db/schema';
 
-const OWNER: Permission[] = [
-  'READ_DASHBOARD',
-  'MANAGE_USERS',
-  'APPLY_DISCOUNT',
-  'SYSTEM_SETTINGS',
-  'MANAGE_PRODUCT',
-  'READ_PRODUCT',
-  'MANAGE_CATEGORY',
-  'STOCK_ADJUSTMENT',
-  'READ_INVENTORY',
-  'CREATE_SALE',
-  'READ_SALE_OWN',
-  'READ_SALE_ALL',
-  'CANCEL_SALE',
-  'CREATE_RETURN',
-  'MANAGE_CUSTOMER',
-  'READ_CUSTOMER',
-  'VIEW_REPORTS',
-  'VIEW_AUDIT_LOG',
-];
+import { ROLE_PERMISSION_CODES, type PermissionCode } from '../db/schema';
 
-const MANAGER: Permission[] = [
-  'READ_DASHBOARD',
-  'MANAGE_PRODUCT',
-  'APPLY_DISCOUNT',
-  'READ_PRODUCT',
-  'MANAGE_CATEGORY',
-  'STOCK_ADJUSTMENT',
-  'READ_INVENTORY',
-  'CREATE_SALE',
-  'READ_SALE_OWN',
-  'READ_SALE_ALL',
-  'CANCEL_SALE',
-  'CREATE_RETURN',
-  'MANAGE_CUSTOMER',
-  'READ_CUSTOMER',
-  'VIEW_REPORTS',
-];
-
-const CASHIER: Permission[] = [
-  'READ_DASHBOARD',
-  'READ_PRODUCT',
-  'READ_INVENTORY',
-  'CREATE_SALE',
-  'READ_SALE_OWN',
-  'MANAGE_CUSTOMER',
-  'READ_CUSTOMER',
-  'VIEW_REPORTS',
-];
-
-export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
-  owner: OWNER,
-  manager: MANAGER,
-  cashier: CASHIER,
+/**
+ * Role -> permission codes defaults. Used ONLY to seed the DB and as a fallback for
+ * legacy access tokens issued before role_id existed in the JWT. The DB is the
+ * runtime source of truth — edit permissions via the Role & Permission UI, not here.
+ */
+export const ROLE_PERMISSIONS: Record<string, readonly PermissionCode[]> = {
+  owner: ROLE_PERMISSION_CODES,
+  manager: [
+    'dashboard.view',
+    'product.view',
+    'product.create',
+    'product.update',
+    'product.delete',
+    'category.view',
+    'category.create',
+    'category.update',
+    'category.delete',
+    'inventory.view',
+    'inventory.adjust',
+    'inventory.opname',
+    'sales.view',
+    'sales.create',
+    'sales.cancel',
+    'sales.return',
+    'customer.view',
+    'customer.create',
+    'customer.update',
+    'customer.delete',
+    'settings.manage',
+    'report.view',
+  ] as const,
+  cashier: [
+    'dashboard.view',
+    'product.view',
+    'category.view',
+    'inventory.view',
+    'sales.view',
+    'sales.create',
+    'sales.return',
+    'customer.view',
+    'customer.create',
+    'customer.update',
+    'report.view',
+  ] as const,
 };
-
-export const hasPermission = (role: string, permission: Permission): boolean =>
-  (ROLE_PERMISSIONS[role] ?? []).includes(permission);

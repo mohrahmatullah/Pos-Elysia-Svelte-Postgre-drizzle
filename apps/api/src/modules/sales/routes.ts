@@ -4,7 +4,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { payments, products, saleItems, sales, stockMovements, users } from '../../db/schema';
 import { ok, handleRouteError, parsePagination, paginationMeta } from '../../lib/response';
-import { auth, requirePerm } from '../../middleware/auth';
+import { auth, requirePerm, hasRolePermission } from '../../middleware/auth';
 import { Errors } from '../../lib/errors';
 import { writeAudit } from '../../lib/audit';
 import { checkout, getSaleDetail, listSales, type CheckoutInput } from './service';
@@ -16,10 +16,11 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
     '/',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_SALE_OWN');
+        const auth = requirePerm(user, 'sales.view');
         const { page, limit, offset } = parsePagination(query);
-        // Cashier sees own sales only (PRD 4.3); manager/owner see all.
-        const isAll = auth.role === 'owner' || auth.role === 'manager';
+        // Permission-driven scoping (PRD 4.3): roles granted sales.cancel (owner/manager
+        // by seed) manage sales and see all; others only see their own transactions.
+        const isAll = hasRolePermission(user, 'sales.cancel');
         const result = await listSales({
           storeId: auth.storeId,
           page,
@@ -50,10 +51,10 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
     '/:id',
     async ({ params, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_SALE_OWN');
+        const auth = requirePerm(user, 'sales.view');
         const detail = await getSaleDetail(params.id, auth.storeId);
-        // Cashier can only view own sales (PRD 4.3).
-        if (auth.role === 'cashier' && detail.cashier_id !== auth.userId) throw Errors.forbidden();
+        // Without sales.cancel, users can only view their own sales (PRD 4.3).
+        if (!hasRolePermission(user, 'sales.cancel') && detail.cashier_id !== auth.userId) throw Errors.forbidden();
         return ok(detail);
       } catch (e) {
         return handleRouteError(e);
@@ -65,7 +66,7 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'CREATE_SALE');
+        const auth = requirePerm(user, 'sales.create');
         const idempotencyKey = request.headers.get('idempotency-key') ?? undefined;
         const input: CheckoutInput = {
           items: body.items,
@@ -117,7 +118,7 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
     '/:id/cancel',
     async ({ params, body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'CANCEL_SALE');
+        const auth = requirePerm(user, 'sales.cancel');
         await db.transaction(async (tx) => {
           const [sale] = await tx
             .select({ id: sales.id, status: sales.status, invoice_number: sales.invoice_number })
@@ -173,7 +174,7 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
     '/:id/return',
     async ({ params, body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'CREATE_RETURN');
+        const auth = requirePerm(user, 'sales.return');
         if (!body.items?.length) throw Errors.validation('Minimal satu item untuk diretur');
 
         const result = await db.transaction(async (tx) => {

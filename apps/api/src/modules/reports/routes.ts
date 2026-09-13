@@ -25,7 +25,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     '/sales',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'VIEW_REPORTS');
+        const auth = requirePerm(user, 'report.view');
         const conds = dateRange(query.from, query.to);
         if (query.cashier_id) conds.push(eq(sales.cashier_id, query.cashier_id));
         const where = completedSale(conds);
@@ -57,7 +57,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     '/products',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'VIEW_REPORTS');
+        const auth = requirePerm(user, 'report.view');
         const conds = dateRange(query.from, query.to);
         const where = completedSale(conds);
         const rows = await db
@@ -88,7 +88,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     '/payments',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'VIEW_REPORTS');
+        const auth = requirePerm(user, 'report.view');
         const conds = dateRange(query.from, query.to);
         const rows = await db
           .select({
@@ -112,7 +112,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     '/stock',
     async ({ user }) => {
       try {
-        const auth = requirePerm(user, 'VIEW_REPORTS');
+        const auth = requirePerm(user, 'report.view');
         const stockExpr = sql<number>`COALESCE((
           SELECT SUM(${stockMovements.quantity_in}) - SUM(${stockMovements.quantity_out})
           FROM ${stockMovements} WHERE ${stockMovements.product_id} = ${products.id}
@@ -144,7 +144,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     '/cashiers',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'VIEW_REPORTS');
+        const auth = requirePerm(user, 'report.view');
         const conds = dateRange(query.from, query.to);
         const rows = await db
           .select({
@@ -171,7 +171,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     '/dashboard',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_DASHBOARD');
+        const auth = requirePerm(user, 'dashboard.view');
         const conds = dateRange(query.from, query.to);
         const where = completedSale(conds);
         const [totals] = await db

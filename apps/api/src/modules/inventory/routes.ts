@@ -23,7 +23,7 @@ export const inventoryRoutes = new Elysia({ prefix: '/inventory' })
     '/',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_INVENTORY');
+        const auth = requirePerm(user, 'inventory.view');
         const { page, limit, offset } = parsePagination(query);
         const conditions = [eq(products.store_id, auth.storeId)];
         if (query.active === 'true') conditions.push(eq(products.active, true));
@@ -56,7 +56,7 @@ export const inventoryRoutes = new Elysia({ prefix: '/inventory' })
     '/:productId',
     async ({ params, query, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_INVENTORY');
+        const auth = requirePerm(user, 'inventory.view');
         const { page, limit, offset } = parsePagination(query);
         const where = and(eq(stockMovements.product_id, params.productId), eq(stockMovements.store_id, auth.storeId));
         const rows = await db
@@ -90,7 +90,7 @@ export const inventoryRoutes = new Elysia({ prefix: '/inventory' })
     '/movements/all',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_INVENTORY');
+        const auth = requirePerm(user, 'inventory.view');
         const { page, limit, offset } = parsePagination(query);
         const conditions = [eq(stockMovements.store_id, auth.storeId)];
         if (query.product_id) conditions.push(eq(stockMovements.product_id, query.product_id));
@@ -124,12 +124,13 @@ export const inventoryRoutes = new Elysia({ prefix: '/inventory' })
     },
     { query: t.Optional(t.Object({ product_id: t.Optional(t.String()), movement_type: t.Optional(t.String()), page: t.Optional(t.String()), limit: t.Optional(t.String()) })) },
   )
-  // Stock adjustment (PRD 5.6) — always produces a movement, audited
+  // Stock adjustment (PRD 5.6) — always produces a movement, audited.
+  // Granular: generic adjustments need inventory.adjust, stock opname needs inventory.opname.
   .post(
     '/adjustments',
     async ({ body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'STOCK_ADJUSTMENT');
+        const auth = requirePerm(user, body.movement_type === 'STOCK_OPNAME' ? 'inventory.opname' : 'inventory.adjust');
         if (!VALID_ADJUSTMENT_TYPES.includes(body.movement_type as AdjustmentType)) {
           throw Errors.validation(`movement_type harus salah dari: ${VALID_ADJUSTMENT_TYPES.join(', ')}`);
         }

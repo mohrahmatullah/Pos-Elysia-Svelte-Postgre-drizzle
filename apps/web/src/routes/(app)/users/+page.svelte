@@ -10,8 +10,13 @@
     status: string;
     role: string;
   }
+  interface RoleOption {
+    id: string;
+    name: string;
+  }
 
   let users = $state<UserRow[]>([]);
+  let roleOptions = $state<RoleOption[]>([]);
   let loading = $state(true);
   let showModal = $state(false);
   let editing = $state<UserRow | null>(null);
@@ -21,8 +26,12 @@
   async function load() {
     loading = true;
     try {
-      const res = await get<UserRow[]>('/users?limit=100');
+      const [res, rolesRes] = await Promise.all([
+        get<UserRow[]>('/users?limit=100'),
+        get<RoleOption[]>('/roles'),
+      ]);
       users = res.data;
+      roleOptions = rolesRes.data;
     } catch (e) {
       toastError((e as Error).message);
     } finally {
@@ -110,9 +119,9 @@
       <input id="u-pass" type="password" bind:value={form.password} />
       <label for="u-role">Role</label>
       <select id="u-role" bind:value={form.role}>
-        <option value="owner">Owner</option>
-        <option value="manager">Manager</option>
-        <option value="cashier">Cashier</option>
+        {#each roleOptions as r (r.id)}
+          <option value={r.name}>{r.name}</option>
+        {/each}
       </select>
       {#if editing}
         <label for="u-status">Status</label>

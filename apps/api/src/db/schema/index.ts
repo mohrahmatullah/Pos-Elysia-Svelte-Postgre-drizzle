@@ -16,7 +16,10 @@ import {
 
 /* ---------------------------------- enums --------------------------------- */
 
-export const roleNameEnum = pgEnum('role_name', ['owner', 'manager', 'cashier']);
+/** Dynamic roles: name is free text (extensible via the Role & Permission UI).
+ * 'owner' keeps a special meaning (seeded full permissions, cannot be deleted/edited in UI).
+ */
+export const PROTECTED_ROLE = 'owner';
 export const userStatusEnum = pgEnum('user_status', ['active', 'inactive']);
 export const saleStatusEnum = pgEnum('sale_status', [
   'completed',
@@ -40,10 +43,118 @@ export const referenceTypeEnum = pgEnum('reference_type', [
   'SALE_RETURN',
   'ADJUSTMENT',
   'INITIAL',
-]);
+]);/* --------------------------------- auth --------------------------------- */
+export const permissions = pgTable(
+  'permissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    code: text('code').notNull().unique(),
+    resource: text('resource').notNull(),
+    action: text('action').notNull(),
+    label: text('label').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('permissions_code_idx').on(t.code), index('permissions_resource_idx').on(t.resource)],
+);
+export const rolePermissions = pgTable(
+  'role_permissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    role_id: uuid('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'cascade' }),
+    permission_code: text('permission_code')
+      .notNull()
+      .references(() => permissions.code),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('role_permissions_role_permission_uq').on(t.role_id, t.permission_code),
+    index('role_permissions_role_idx').on(t.role_id),
+  ],
+);
+export const roleSettings = pgTable(
+  'role_settings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    role_id: uuid('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    value: text('value').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('role_settings_role_key_uq').on(t.role_id, t.key), index('role_settings_role_idx').on(t.role_id)],
+);
+export type Permission = typeof permissions.$inferSelect;
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type RoleSetting = typeof roleSettings.$inferSelect;
+export const ROLE_PERMISSION_CODES = [
+  // dashboard
+  'dashboard.view',
+  // products
+  'product.view',
+  'product.create',
+  'product.update',
+  'product.delete',
+  // categories
+  'category.view',
+  'category.create',
+  'category.update',
+  'category.delete',
+  // inventory
+  'inventory.view',
+  'inventory.adjust',
+  'inventory.opname',
+  // sales
+  'sales.view',
+  'sales.create',
+  'sales.cancel',
+  'sales.return',
+  // customers
+  'customer.view',
+  'customer.create',
+  'customer.update',
+  'customer.delete',
+  // settings
+  'settings.manage',
+  // users (only owner in MVP scope)
+  'user.manage',
+  // reports
+  'report.view',
+  // audit
+  'audit.view',
+] as const;
+export type PermissionCode = (typeof ROLE_PERMISSION_CODES)[number];
+export const PERMISSION_LABEL: Record<PermissionCode, string> = {
+  'dashboard.view': 'Dashboard',
+  'product.view': 'View products',
+  'product.create': 'Create products',
+  'product.update': 'Update products',
+  'product.delete': 'Delete / deactivate products',
+  'category.view': 'View categories',
+  'category.create': 'Create categories',
+  'category.update': 'Update categories',
+  'category.delete': 'Delete / deactivate categories',
+  'inventory.view': 'View inventory',
+  'inventory.adjust': 'Adjust stock',
+  'inventory.opname': 'Stock opname',
+  'sales.view': 'View sales',
+  'sales.create': 'Create sales (POS)',
+  'sales.cancel': 'Cancel sales',
+  'sales.return': 'Create sales return',
+  'customer.view': 'View customers',
+  'customer.create': 'Create customers',
+  'customer.update': 'Update customers',
+  'customer.delete': 'Delete customers',
+  'settings.manage': 'Manage store settings',
+  'user.manage': 'Manage users',
+  'report.view': 'View reports',
+  'audit.view': 'View audit log',
+};
 
 /* --------------------------------- stores --------------------------------- */
-
 export const stores = pgTable('stores', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
@@ -64,7 +175,7 @@ export const roles = pgTable(
   'roles',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    name: roleNameEnum('name').notNull(),
+    name: text('name').notNull(),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -322,6 +433,14 @@ export const auditLogs = pgTable(
 /* -------------------------------- inference ------------------------------- */
 
 export type Store = typeof stores.$inferSelect;
+export type PermissionSelect = typeof permissions.$inferSelect;
+export type RolePermissionSelect = typeof rolePermissions.$inferSelect;
+export type RoleSettingSelect = typeof roleSettings.$inferSelect;
+export type {
+  Permission as PermissionRecord,
+  RolePermission as RolePermissionRecord,
+  RoleSetting as RoleSettingRecord,
+};
 export type Role = typeof roles.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;

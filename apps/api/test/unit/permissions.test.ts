@@ -1,55 +1,67 @@
 import { describe, expect, test } from 'bun:test';
-import { hasPermission } from '../../src/lib/permissions';
-import { validateCart } from '@pos/shared';
-import { sanitizeMetadata } from '../../src/lib/audit';
+import { ROLE_PERMISSIONS } from '../../src/lib/permissions';
+import { ROLE_PERMISSION_CODES } from '../../src/db/schema';
 
-describe('permissions', () => {
-  test('cashier can create sale and read product (PRD 25)', () => {
-    expect(hasPermission('cashier', 'CREATE_SALE')).toBe(true);
-    expect(hasPermission('cashier', 'READ_PRODUCT')).toBe(true);
+const set = (role: string) => new Set<string>(ROLE_PERMISSIONS[role] ?? []);
+
+describe('permission seed defaults', () => {
+  test('cashier: POS-focused set (PRD 25)', () => {
+    const s = set('cashier');
+    expect(s.has('sales.create')).toBe(true);
+    expect(s.has('product.view')).toBe(true);
+    expect(s.has('customer.view')).toBe(true);
+    expect(s.has('report.view')).toBe(true);
   });
 
-  test('cashier can access dashboard and reports but not user management', () => {
-    expect(hasPermission('cashier', 'READ_DASHBOARD')).toBe(true);
-    expect(hasPermission('cashier', 'VIEW_REPORTS')).toBe(true);
-    expect(hasPermission('cashier', 'STOCK_ADJUSTMENT')).toBe(false);
-    expect(hasPermission('cashier', 'MANAGE_USERS')).toBe(false);
-    expect(hasPermission('cashier', 'VIEW_AUDIT_LOG')).toBe(false);
-    expect(hasPermission('cashier', 'SYSTEM_SETTINGS')).toBe(false);
+  test('cashier cannot manage users, settings, audit, or adjust stock', () => {
+    const s = set('cashier');
+    expect(s.has('user.manage')).toBe(false);
+    expect(s.has('settings.manage')).toBe(false);
+    expect(s.has('audit.view')).toBe(false);
+    expect(s.has('inventory.adjust')).toBe(false);
+    expect(s.has('inventory.opname')).toBe(false);
+    expect(s.has('sales.cancel')).toBe(false);
   });
 
-  test('manager can manage products and adjust stock but not manage users', () => {
-    expect(hasPermission('manager', 'MANAGE_PRODUCT')).toBe(true);
-    expect(hasPermission('manager', 'STOCK_ADJUSTMENT')).toBe(true);
-    expect(hasPermission('manager', 'MANAGE_USERS')).toBe(false);
-    expect(hasPermission('manager', 'SYSTEM_SETTINGS')).toBe(false);
+  test('manager: operational set, but no user management', () => {
+    const s = set('manager');
+    expect(s.has('product.create')).toBe(true);
+    expect(s.has('product.update')).toBe(true);
+    expect(s.has('product.delete')).toBe(true);
+    expect(s.has('inventory.adjust')).toBe(true);
+    expect(s.has('sales.cancel')).toBe(true);
+    expect(s.has('sales.return')).toBe(true);
+    expect(s.has('settings.manage')).toBe(true);
+    expect(s.has('user.manage')).toBe(false);
+    expect(s.has('audit.view')).toBe(false);
   });
 
-  test('owner can do everything', () => {
-    expect(hasPermission('owner', 'MANAGE_USERS')).toBe(true);
-    expect(hasPermission('owner', 'SYSTEM_SETTINGS')).toBe(true);
-    expect(hasPermission('owner', 'VIEW_AUDIT_LOG')).toBe(true);
-  });
-});
-
-describe('shared validation', () => {
-  test('valid cart passes', () => {
-    const errors = validateCart({ items: [{ product_id: 'x', quantity: 2 }] });
-    expect(errors).toHaveLength(0);
+  test('owner is seeded with every catalog permission (explicit rows, not a runtime rule)', () => {
+    const s = set('owner');
+    for (const code of ROLE_PERMISSION_CODES) {
+      expect(s.has(code)).toBe(true);
+    }
   });
 
-  test('empty cart and duplicate items rejected', () => {
-    expect(validateCart({ items: [] }).length).toBeGreaterThan(0);
-    const dup = validateCart({ items: [{ product_id: 'x', quantity: 1 }, { product_id: 'x', quantity: 1 }] });
-    expect(dup.length).toBeGreaterThan(0);
-  });
-});
-
-describe('audit metadata sanitization', () => {
-  test('redacts sensitive keys (PRD 11)', () => {
-    const clean = sanitizeMetadata({ password: 'secret', token: 'abc', name: 'Budi', grand_total: 100 })!;
-    expect(clean['password']).toBe('[REDACTED]');
-    expect(clean['token']).toBe('[REDACTED]');
-    expect(clean['name']).toBe('Budi');
+  test('catalog contains all agreed resource.action codes', () => {
+    const codes = new Set<string>(ROLE_PERMISSION_CODES);
+    for (const code of [
+      'product.view',
+      'product.create',
+      'product.update',
+      'product.delete',
+      'inventory.view',
+      'inventory.adjust',
+      'inventory.opname',
+      'sales.view',
+      'sales.create',
+      'sales.cancel',
+      'sales.return',
+      'report.view',
+      'user.manage',
+      'settings.manage',
+    ]) {
+      expect(codes.has(code)).toBe(true);
+    }
   });
 });

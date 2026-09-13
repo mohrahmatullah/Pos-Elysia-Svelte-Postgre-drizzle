@@ -2,7 +2,7 @@
 import Elysia, { t } from 'elysia';
 import { login, logout, refresh } from './service';
 import { ok, handleRouteError } from '../../lib/response';
-import { auth, requireUser } from '../../middleware/auth';
+import { auth, requireUser, loadPermissionsForRole } from '../../middleware/auth';
 import { writeAudit } from '../../lib/audit';
 
 /** Simple in-memory rate limiter for auth endpoints (PRD 25). */
@@ -32,6 +32,8 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['auth'] })
       rateLimit(ip);
       try {
         const result = await login(body.email, body.password);
+        // Attach the DB-backed permission set so the UI can render immediately.
+        result.permissions = [...(await loadPermissionsForRole(result.roleId, result.role))];
         await writeAudit({
           storeId: result.user.storeId,
           userId: result.user.id,
@@ -87,12 +89,14 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['auth'] })
     },
     { body: t.Optional(t.Object({ refresh_token: t.Optional(t.String()) })) },
   )
-  .get('/me', ({ user }) => {
+  .get('/me', async ({ user }) => {
     const auth = requireUser(user);
+    const permissionSet = await loadPermissionsForRole(auth.roleId, auth.role);
     return ok({
       user_id: auth.userId,
       store_id: auth.storeId,
       role: auth.role,
       session_id: auth.sessionId,
+      permissions: [...permissionSet],
     });
   });

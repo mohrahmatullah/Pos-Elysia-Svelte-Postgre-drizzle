@@ -28,6 +28,7 @@ export interface SessionUser {
   email: string;
   role: string;
   storeId: string;
+  permissions?: string[];
 }
 
 interface StoredAuth {
@@ -147,6 +148,7 @@ export async function api<T = unknown>(
 export const get = <T>(path: string) => api<T>('GET', path);
 export const post = <T>(path: string, body?: unknown, opts?: { idempotencyKey?: string }) =>
   api<T>('POST', path, body, opts);
+export const put = <T>(path: string, body?: unknown) => api<T>('PUT', path, body);
 export const patch = <T>(path: string, body?: unknown) => api<T>('PATCH', path, body);
 export const del = <T>(path: string) => api<T>('DELETE', path);
 

@@ -14,7 +14,7 @@ export const categoryRoutes = new Elysia({ prefix: '/categories' })
     '/',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_PRODUCT');
+        const auth = requirePerm(user, 'category.view');
         const { page, limit, offset } = parsePagination(query);
         const conditions = [eq(categories.store_id, auth.storeId)];
         if (query.search) conditions.push(ilike(categories.name, `%${query.search}%`));
@@ -34,7 +34,7 @@ export const categoryRoutes = new Elysia({ prefix: '/categories' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_CATEGORY');
+        const auth = requirePerm(user, 'category.create');
         const [created] = await db
           .insert(categories)
           .values({
@@ -64,7 +64,7 @@ export const categoryRoutes = new Elysia({ prefix: '/categories' })
     '/:id',
     async ({ params, body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_CATEGORY');
+        const auth = requirePerm(user, 'category.update');
         const patch: Record<string, unknown> = { updated_at: new Date() };
         if (body.name !== undefined) patch.name = body.name;
         if (body.description !== undefined) patch.description = body.description;
@@ -95,7 +95,7 @@ export const categoryRoutes = new Elysia({ prefix: '/categories' })
     '/:id',
     async ({ params, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_CATEGORY');
+        const auth = requirePerm(user, 'category.delete');
         // Soft-delete: deactivate to preserve historical references (PRD 42 principle 9)
         const [updated] = await db
           .update(categories)

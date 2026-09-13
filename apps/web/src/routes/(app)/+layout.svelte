@@ -4,6 +4,8 @@
   import { hydrateUser, user } from '$lib/stores/user';
   import { toasts } from '$lib/stores/toast';
   import { logout } from '$lib/auth';
+  import { permissions, loadPermissions } from '$lib/permissions';
+  import { MENU } from '$lib/menu';
 
   let { children } = $props();
 
@@ -12,23 +14,13 @@
   $effect(() => {
     page.url.pathname;
     hydrateUser();
+    // Refresh permissions from backend after every navigation (UI cache only).
+    void loadPermissions();
   });
 
   const nav = $derived.by(() => {
-    const role = $user?.role ?? 'cashier';
-    const items: { href: string; label: string; roles: string[] }[] = [
-      { href: '/', label: 'Dashboard', roles: ['owner', 'manager', 'cashier'] },
-      { href: '/pos', label: 'POS', roles: ['owner', 'manager', 'cashier'] },
-      { href: '/products', label: 'Products', roles: ['owner', 'manager', 'cashier'] },
-      { href: '/inventory', label: 'Inventory', roles: ['owner', 'manager', 'cashier'] },
-      { href: '/sales', label: 'Sales', roles: ['owner', 'manager', 'cashier'] },
-      { href: '/customers', label: 'Customers', roles: ['owner', 'manager', 'cashier'] },
-      { href: '/reports', label: 'Reports', roles: ['owner', 'manager', 'cashier'] },
-      { href: '/users', label: 'Users', roles: ['owner'] },
-      { href: '/audit', label: 'Audit Log', roles: ['owner'] },
-      { href: '/settings', label: 'Settings', roles: ['owner'] },
-    ];
-    return items.filter((i) => i.roles.includes(role));
+    const perms = $permissions.permissions;
+    return MENU.filter((item) => perms.has(item.permission));
   });
 
   function isActive(href: string): boolean {
@@ -47,7 +39,7 @@
     <div class="user-box">
       <div class="muted small">{$user?.name ?? ''}</div>
       <div class="muted small">{$user?.email ?? ''}</div>
-      <div class="role-badge">{$user?.role ?? ''}</div>
+      <div class="role-badge">{$permissions.role ?? ''}</div>
       <button
         class="ghost"
         onclick={async () => {

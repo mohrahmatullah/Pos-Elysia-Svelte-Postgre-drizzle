@@ -14,7 +14,7 @@ export const customerRoutes = new Elysia({ prefix: '/customers' })
     '/',
     async ({ query, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_CUSTOMER');
+        const auth = requirePerm(user, 'customer.view');
         const { page, limit, offset } = parsePagination(query);
         const conditions = [eq(customers.store_id, auth.storeId)];
         if (query.search) {
@@ -36,7 +36,7 @@ export const customerRoutes = new Elysia({ prefix: '/customers' })
     '/:id',
     async ({ params, user }) => {
       try {
-        const auth = requirePerm(user, 'READ_CUSTOMER');
+        const auth = requirePerm(user, 'customer.view');
         const [row] = await db
           .select()
           .from(customers)
@@ -74,7 +74,7 @@ export const customerRoutes = new Elysia({ prefix: '/customers' })
     '/',
     async ({ body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_CUSTOMER');
+        const auth = requirePerm(user, 'customer.create');
         const [created] = await db
           .insert(customers)
           .values({
@@ -113,7 +113,7 @@ export const customerRoutes = new Elysia({ prefix: '/customers' })
     '/:id',
     async ({ params, body, user, request }) => {
       try {
-        const auth = requirePerm(user, 'MANAGE_CUSTOMER');
+        const auth = requirePerm(user, 'customer.update');
         const patch: Record<string, unknown> = { updated_at: new Date() };
         for (const key of ['name', 'phone', 'email', 'address', 'notes'] as const) {
           if (body[key] !== undefined) patch[key] = body[key];
