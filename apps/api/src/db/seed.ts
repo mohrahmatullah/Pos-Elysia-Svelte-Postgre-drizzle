@@ -123,6 +123,84 @@ async function main() {
     );
   }
 
+  // ------------------ Menus (DB-driven sidebar, grouped) ------------------------
+  // Group headers have href = null; children carry permissions. The seed ENFORCES the
+  // desired structure: existing rows (from older flat seeds) are re-parented/updated,
+  // missing rows are inserted. User-created menus are never touched.
+  const allMenus = await db.select().from(s.menus);
+  const byHref = new Map(allMenus.filter((m) => m.href).map((m) => [m.href!, m]));
+  const groupByLabel = new Map(allMenus.filter((m) => !m.href).map((m) => [m.label, m]));
+
+  async function ensureGroup(label: string, icon: string | null, sortOrder: number): Promise<string> {
+    const existingRow = groupByLabel.get(label);
+    if (existingRow) {
+      if (existingRow.icon !== icon || existingRow.sort_order !== sortOrder) {
+        await db.update(s.menus).set({ icon, sort_order: sortOrder, updated_at: new Date() }).where(eq(s.menus.id, existingRow.id));
+      }
+      return existingRow.id;
+    }
+    const [row] = await db.insert(s.menus).values({ label, href: null, icon, sort_order: sortOrder }).returning({ id: s.menus.id });
+    return row.id;
+  }
+
+  async function ensureItem(input: {
+    label: string;
+    href: string;
+    icon: string | null;
+    permission_code: string;
+    parent_id: string | null;
+    sort_order: number;
+  }): Promise<void> {
+    const existingRow = byHref.get(input.href);
+    if (existingRow) {
+      await db
+        .update(s.menus)
+        .set({
+          label: input.label,
+          icon: input.icon,
+          permission_code: input.permission_code,
+          parent_id: input.parent_id,
+          sort_order: input.sort_order,
+          updated_at: new Date(),
+        })
+        .where(eq(s.menus.id, existingRow.id));
+      return;
+    }
+    await db.insert(s.menus).values(input).onConflictDoNothing();
+  }
+
+  // Top-level standalone
+  await ensureItem({ label: 'Dashboard', href: '/', icon: '📊', permission_code: 'dashboard.view', parent_id: null, sort_order: 10 });
+
+  // Group: Master Data
+  const masterId = await ensureGroup('Master Data', '🗃️', 20);
+  await ensureItem({ label: 'Products', href: '/products', icon: '📦', permission_code: 'product.view', parent_id: masterId, sort_order: 21 });
+  await ensureItem({ label: 'Inventory', href: '/inventory', icon: '🏷️', permission_code: 'inventory.view', parent_id: masterId, sort_order: 22 });
+  await ensureItem({ label: 'Customers', href: '/customers', icon: '👥', permission_code: 'customer.view', parent_id: masterId, sort_order: 23 });
+
+  // Group: Transaksi
+  const trxId = await ensureGroup('Transaksi', '💼', 30);
+  await ensureItem({ label: 'POS / Kasir', href: '/pos', icon: '🛒', permission_code: 'sales.create', parent_id: trxId, sort_order: 31 });
+  await ensureItem({ label: 'Riwayat Sales', href: '/sales', icon: '🧾', permission_code: 'sales.view', parent_id: trxId, sort_order: 32 });
+
+  // Group: Laporan (group-gated: the header carries report.view for its children)
+  const reportId = await ensureGroup('Laporan', '📈', 40);
+  await db.update(s.menus).set({ permission_code: 'report.view', updated_at: new Date() }).where(eq(s.menus.id, reportId));
+  await ensureItem({ label: 'Reports', href: '/reports', icon: '📊', permission_code: 'report.view', parent_id: reportId, sort_order: 41 });
+
+  // Group: Sistem
+  const sysId = await ensureGroup('Sistem', '⚙️', 50);
+  await ensureItem({ label: 'Users', href: '/users', icon: '👤', permission_code: 'user.manage', parent_id: sysId, sort_order: 51 });
+  await ensureItem({ label: 'Role & Permission', href: '/roles', icon: '🔐', permission_code: 'user.manage', parent_id: sysId, sort_order: 52 });
+  await ensureItem({ label: 'Menus', href: '/menus', icon: '🧭', permission_code: 'user.manage', parent_id: sysId, sort_order: 53 });
+  await ensureItem({ label: 'Audit Log', href: '/audit', icon: '📜', permission_code: 'audit.view', parent_id: sysId, sort_order: 54 });
+  await ensureItem({ label: 'Store Settings', href: '/settings', icon: '⚙️', permission_code: 'settings.manage', parent_id: sysId, sort_order: 55 });
+
+  // Cleanup: stray row from an earlier partial grouped seed (no /categories page exists)
+  await db.delete(s.menus).where(eq(s.menus.href, '/categories'));
+
+  console.log('   Menus ensured (grouped: Master Data, Transaksi, Laporan, Sistem)');
+
   // ------------------------------ Customers (by name) ----------------------------
   const existingCust = new Set(
     (await db.select({ name: s.customers.name }).from(s.customers).where(eq(s.customers.store_id, store.id))).map((c) => c.name),

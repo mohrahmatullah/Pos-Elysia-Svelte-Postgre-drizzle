@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import {
   boolean,
   check,
@@ -224,6 +225,39 @@ export const sessions = pgTable(
     index('sessions_user_idx').on(t.user_id),
   ],
 );
+
+/* ---------------------- dynamic menus (DB-driven sidebar) ---------------------- */
+
+/** Sidebar/navigation entries, grouped two levels deep.
+ * Parent rows (parent_id = null, href = null) are GROUP HEADERS: they have no link and
+ * no own permission — they render when at least one child is visible to the user.
+ * Child rows carry the permission that gates them (group headers may also carry one).
+ */
+export const menus = pgTable(
+  'menus',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    label: text('label').notNull(),
+    /** null for group headers (no link, pure grouping). */
+    href: text('href'),
+    icon: text('icon'),
+    parent_id: uuid('parent_id').references((): AnyPgColumn => menus.id, { onDelete: 'cascade' }),
+    /** Children of linkless group headers have no own permission (group-level gate).
+     * Link-bearing menus must have one; enforced in the API layer. */
+    permission_code: text('permission_code').references(() => permissions.code, { onDelete: 'restrict' }),
+    sort_order: integer('sort_order').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('menus_href_uq').on(t.href),
+    index('menus_permission_idx').on(t.permission_code),
+    index('menus_sort_idx').on(t.sort_order),
+    index('menus_parent_idx').on(t.parent_id),
+  ],
+);
+export type MenuRow = typeof menus.$inferSelect;
 
 /* ------------------------------ master data ------------------------------- */
 

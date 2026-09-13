@@ -5,7 +5,7 @@
   import { toasts } from '$lib/stores/toast';
   import { logout } from '$lib/auth';
   import { permissions, loadPermissions } from '$lib/permissions';
-  import { MENU } from '$lib/menu';
+  import { menuItems, loadMenus, clearMenus } from '$lib/menu';
 
   let { children } = $props();
 
@@ -14,14 +14,24 @@
   $effect(() => {
     page.url.pathname;
     hydrateUser();
-    // Refresh permissions from backend after every navigation (UI cache only).
-    void loadPermissions();
+    // Refresh permissions + dynamic menus from backend after every navigation.
+    void loadPermissions().then(loadMenus);
   });
 
-  const nav = $derived.by(() => {
-    const perms = $permissions.permissions;
-    return MENU.filter((item) => perms.has(item.permission));
+  // Logouts must also clear menus.
+  $effect(() => {
+    if (!$user) clearMenus();
   });
+
+  const nav = $derived($menuItems);
+
+  /** Groups with an active child (or an active own href) start expanded. */
+  const isExpanded = (groupId: string): boolean => {
+    const group = nav.find((g) => g.id === groupId);
+    if (!group) return false;
+    if (group.href && isActive(group.href)) return true;
+    return group.children.some((c) => isActive(c.href));
+  };
 
   function isActive(href: string): boolean {
     return href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
@@ -32,8 +42,30 @@
   <aside>
     <div class="brand">🛒 POS</div>
     <nav>
-      {#each nav as item (item.href)}
-        <a href={item.href} class:active={isActive(item.href)}>{item.label}</a>
+      {#each nav as group (group.id)}
+        {#if group.href}
+          <!-- Standalone link item (may still nest children beneath it) -->
+          <a href={group.href} class:active={isActive(group.href)}>
+            {group.icon ? `${group.icon} ` : ''}{group.label}
+          </a>
+          {#if group.children.length > 0}
+            <div class="sub">
+              {#each group.children as child (child.id)}
+                <a href={child.href} class:active={isActive(child.href)}>{child.icon ? `${child.icon} ` : ''}{child.label}</a>
+              {/each}
+            </div>
+          {/if}
+        {:else}
+          <!-- Group header: collapsible section, visible only with >=1 permitted child -->
+          <details open={isExpanded(group.id)} class="group">
+            <summary>{group.icon ? `${group.icon} ` : ''}{group.label}</summary>
+            <div class="sub">
+              {#each group.children as child (child.id)}
+                <a href={child.href} class:active={isActive(child.href)}>{child.icon ? `${child.icon} ` : ''}{child.label}</a>
+              {/each}
+            </div>
+          </details>
+        {/if}
       {/each}
     </nav>
     <div class="user-box">
@@ -98,6 +130,46 @@
   nav a.active {
     color: #fff;
     background: var(--accent-strong);
+  }
+  details.group summary {
+    color: var(--text-dim);
+    padding: 0.5rem 0.7rem;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  details.group summary::-webkit-details-marker {
+    display: none;
+  }
+  details.group summary::after {
+    content: '▸';
+    margin-left: auto;
+    transition: transform 0.15s ease;
+    font-size: 0.75rem;
+  }
+  details.group[open] summary::after {
+    transform: rotate(90deg);
+  }
+  details.group summary:hover {
+    color: var(--text);
+    background: var(--bg-card);
+  }
+  .sub {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 0.9rem;
+    border-left: 2px solid var(--border);
+    margin: 2px 0 6px 0.9rem;
+  }
+  .sub a {
+    font-size: 0.86rem;
+    padding: 0.4rem 0.6rem;
   }
   .user-box {
     border-top: 1px solid var(--border);

@@ -16,13 +16,35 @@ import { writeAudit } from '../../lib/audit';
 import { Errors } from '../../lib/errors';
 import { PERMISSION_LABEL, ROLE_PERMISSION_CODES, type PermissionCode } from '../../db/schema';
 import { getRolePermissionCodes } from '../../db/permission';
+import { allPermissionCodes } from '../../db/permission-catalog';
 
-/** Catalog grouped by resource: { product: ['product.view', ...], ... } */
-const resourceGroup: Record<string, string[]> = {};
-for (const code of ROLE_PERMISSION_CODES) {
-  const [resource] = code.split('.');
-  resourceGroup[resource] ??= [];
-  resourceGroup[resource].push(code);
+/** Catalog grouped by resource, built from the DB `permissions` table (source of truth).
+ * Falls back to the static seed list only if the DB is empty (pre-seed). */
+async function buildResourceGroup(): Promise<{ group: Record<string, string[]>; labels: Record<string, string> }> {
+  const rows = await db
+    .select({ code: schema.permissions.code, resource: schema.permissions.resource, label: schema.permissions.label })
+    .from(schema.permissions);
+  const group: Record<string, string[]> = {};
+  const labels: Record<string, string> = {};
+  if (rows.length === 0) {
+    for (const code of ROLE_PERMISSION_CODES) {
+      const [resource] = code.split('.');
+      (group[resource] ??= []).push(code);
+      labels[code] = PERMISSION_LABEL[code];
+    }
+    return { group, labels };
+  }
+  for (const row of rows) {
+    (group[row.resource] ??= []).push(row.code);
+    labels[row.code] = row.label;
+  }
+  // Keep resources in a stable, readable order (seed resources first, then extras).
+  const order = ['dashboard', 'product', 'category', 'inventory', 'sales', 'customer', 'report', 'settings', 'user', 'audit'];
+  const sorted: Record<string, string[]> = {};
+  for (const key of [...order, ...Object.keys(group).filter((k) => !order.includes(k))].sort()) {
+    if (group[key]) sorted[key] = group[key];
+  }
+  return { group: sorted, labels };
 }
 
 /** Mutations require 'user.manage' (owner has it via seed; other roles can be granted it too). */
@@ -30,15 +52,16 @@ const canManagePermissions = (set: ReadonlySet<string>): boolean => set.has('use
 
 export const permissionRoutes = new Elysia({ prefix: '/permissions' })
   .use(auth)
-  // Catalog for the checkbox matrix
+  // Catalog for the checkbox matrix (DB-driven; new menu permissions appear automatically)
   .get(
     '/',
     async ({ user }) => {
       try {
         const me = requireUser(user);
+        const { group, labels } = await buildResourceGroup();
         return ok({
-          resources: resourceGroup,
-          labels: PERMISSION_LABEL,
+          resources: group,
+          labels,
           selected: [...me.permissions],
         });
       } catch (e) {
@@ -94,8 +117,8 @@ export const permissionRoutes = new Elysia({ prefix: '/permissions' })
         // runtime `owner => allow all` rule.
         if (role.name === 'owner') throw Errors.forbidden('Owner permissions are locked (seeded with all codes)');
 
-        // Validate all codes against the catalog (role_permissions has FK to permissions.code)
-        const validCodes = new Set<string>(ROLE_PERMISSION_CODES);
+        // Validate all codes against the DB catalog (role_permissions has FK to permissions.code)
+        const validCodes = await allPermissionCodes();
         const invalid = body.codes.filter((c) => !validCodes.has(c));
         if (invalid.length > 0) throw Errors.validation(`Permission tidak valid: ${invalid.join(', ')}`);
         const codes = [...new Set(body.codes)] as PermissionCode[];

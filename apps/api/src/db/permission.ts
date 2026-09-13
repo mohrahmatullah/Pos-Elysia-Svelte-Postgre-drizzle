@@ -37,14 +37,17 @@ export async function upsertPermissionCatalog(): Promise<void> {
       set: { label: sql`excluded.label`, resource: sql`excluded.resource`, action: sql`excluded.action` },
     });
 }
-export async function buildPermissionSet(roleId: string): Promise<Set<PermissionCode>> {
+/** Permission codes granted to a role, read straight from the DB.
+ * Returned as a plain string set: dynamic menus can create new codes at runtime,
+ * so the set is not limited to the compile-time seed catalog. */
+export async function buildPermissionSet(roleId: string): Promise<Set<string>> {
   const rows = await db
     .select({ code: permissions.code })
     .from(permissions)
     .innerJoin(rolePermissions, eq(rolePermissions.permission_code, permissions.code))
     .where(eq(rolePermissions.role_id, roleId));
-  return new Set(rows.map((r) => r.code) as PermissionCode[]);
+  return new Set(rows.map((r) => r.code));
 }
-export async function getRolePermissionCodes(roleId: string): Promise<Set<PermissionCode>> {
+export async function getRolePermissionCodes(roleId: string): Promise<Set<string>> {
   return buildPermissionSet(roleId);
 }

@@ -1,6 +1,7 @@
 import { post, saveAuth, clearAuth, type SessionUser } from './api';
-import { setUser } from '$lib/stores/user';
-import { applyLoginPermissions, clearPermissions } from '$lib/permissions';
+  import { setUser } from '$lib/stores/user';
+  import { applyLoginPermissions, clearPermissions } from '$lib/permissions';
+  import { clearMenus } from '$lib/menu';
 
 interface LoginResponse {
   accessToken: string;
@@ -30,4 +31,5 @@ export async function logout(): Promise<void> {
   clearAuth();
   setUser(null);
   clearPermissions();
+  clearMenus();
 }
