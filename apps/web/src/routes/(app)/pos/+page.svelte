@@ -27,6 +27,7 @@
     category_name: string | null;
     discount_type: 'PERCENT' | 'NOMINAL';
     discount_value: string;
+    available_retail?: boolean;
   }
   interface Customer {
     id: string;
@@ -119,7 +120,8 @@
         get<Category[]>('/categories?active=true&limit=100'),
         get<StoreCfg>('/settings').catch(() => null),
       ]);
-      products = p.data;
+      // Retail channel only — resto-only products are hidden here.
+      products = p.data.filter((x) => (x as Product & { available_retail?: boolean }).available_retail !== false);
       customers = c.data;
       categories = cats.data;
       // General discount (Store Settings) pre-fills the order discount for the
@@ -174,9 +176,9 @@
       clearCart();
       orderDiscountType.set('NOMINAL');
       selectedCustomer = null;
-      // refresh stock display
+      // refresh stock display (retail channel only)
       const p = await get<Product[]>('/products?active=true&limit=100');
-      products = p.data;
+      products = p.data.filter((x) => (x as Product & { available_retail?: boolean }).available_retail !== false);
       toastSuccess(`Transaksi ${data.invoice_number} berhasil`);
     } catch (e) {
       toastError((e as Error).message);

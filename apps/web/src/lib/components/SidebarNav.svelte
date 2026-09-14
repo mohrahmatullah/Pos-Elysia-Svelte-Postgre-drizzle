@@ -54,8 +54,23 @@
 
   const hasIcon = (icon: string | null): boolean => Boolean(icon && icon.trim());
 
+  /** Every linkable href in the sidebar (standalone items + children). */
+  const allHrefs = $derived(
+    $menuItems.flatMap((g) => (g.href ? [g.href, ...g.children.map((c) => c.href)] : g.children.map((c) => c.href))),
+  );
+
+  function matches(path: string, href: string): boolean {
+    if (href === '/') return path === '/';
+    // Segment-boundary check: /resto must not match /restoX, but must match /resto/tables.
+    return path === href || path.startsWith(href + '/');
+  }
+
+  /** Active only for the MOST SPECIFIC match: on /resto/tables the "Meja" item is
+   * active and "POS Resto" (/resto) is not — previously both lit up. */
   function isActive(href: string): boolean {
-    return href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
+    const path = page.url.pathname;
+    if (!matches(path, href)) return false;
+    return !allHrefs.some((other) => other !== href && other.length > href.length && matches(path, other));
   }
 
   /** Groups with an active child (or an active own href) start expanded. */

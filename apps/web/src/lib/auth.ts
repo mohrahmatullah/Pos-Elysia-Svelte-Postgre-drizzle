@@ -9,6 +9,7 @@ interface LoginResponse {
   user: SessionUser;
   role?: string;
   permissions?: string[];
+  business_type?: string;
 }
 
 export async function login(email: string, password: string): Promise<SessionUser> {
@@ -17,7 +18,7 @@ export async function login(email: string, password: string): Promise<SessionUse
   setUser(data.user);
 
   // Populate the permission store from the backend payload (UI-only cache).
-  applyLoginPermissions({ role: data.role, permissions: data.permissions });
+  applyLoginPermissions({ role: data.role, permissions: data.permissions, business_type: data.business_type });
 
   return data.user;
 }

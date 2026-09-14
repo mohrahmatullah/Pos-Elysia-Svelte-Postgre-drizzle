@@ -28,6 +28,13 @@ export const PROTECTED_ROLE = 'owner';
 export const discountTypeEnum = pgEnum('discount_type', ['PERCENT', 'NOMINAL']);
 export type DiscountType = (typeof discountTypeEnum.enumValues)[number];
 export const userStatusEnum = pgEnum('user_status', ['active', 'inactive']);
+/** Business type of a store: pure retail, pure restaurant, or both (hybrid).
+ * Gates which POS modules are available (feature access + menu visibility). */
+export const businessTypeEnum = pgEnum('business_type', ['RETAIL', 'RESTO', 'HYBRID']);
+/** Resto table status within the floor plan. */
+export const tableStatusEnum = pgEnum('table_status', ['FREE', 'OCCUPIED', 'RESERVED']);
+/** Resto order lifecycle. Settlement creates a `sales` row (shared checkout). */
+export const restoOrderStatusEnum = pgEnum('resto_order_status', ['OPEN', 'SETTLED', 'CANCELLED']);
 export const saleStatusEnum = pgEnum('sale_status', [
   'completed',
   'cancelled',
@@ -142,6 +149,16 @@ export const ROLE_PERMISSION_CODES = [
   'store.update',
   'store.delete',
   'store.switch',
+  /** Owner-only: change the store's business type (re-scopes menus/features). */
+  'store.business_type',
+  // retail (POS Kasir channel — products flagged available_retail)
+  'retail.manage',
+  // resto (POS Resto module — tables, orders, kitchen)
+  'table.manage',
+  'resto.view',
+  'resto.order',
+  'resto.settle',
+  'kitchen.view',
   // menus (dynamic sidebar administration)
   'menu.view',
   'menu.create',
@@ -153,6 +170,18 @@ export const ROLE_PERMISSION_CODES = [
   'audit.view',
 ] as const;
 export type PermissionCode = (typeof ROLE_PERMISSION_CODES)[number];
+
+/** Business types a store can run. HYBRID = both retail & resto features. */
+export const BUSINESS_TYPE_VALUES = ['RETAIL', 'RESTO', 'HYBRID'] as const;
+export type BusinessType = (typeof BUSINESS_TYPE_VALUES)[number];
+
+/** Menus tagged with a business_scope are only sent to matching stores:
+ * NULL → everyone; 'RETAIL' → RETAIL+HYBRID; 'RESTO' → RESTO+HYBRID. */
+export function scopeMatchesStore(scope: string | null, businessType: string): boolean {
+  if (!scope) return true;
+  if (businessType === 'HYBRID') return true;
+  return scope === businessType;
+}
 export const PERMISSION_LABEL: Record<PermissionCode, string> = {
   'dashboard.view': 'Dashboard',
   'product.view': 'View products',
@@ -188,6 +217,13 @@ export const PERMISSION_LABEL: Record<PermissionCode, string> = {
   'store.update': 'Update stores',
   'store.delete': 'Deactivate stores',
   'store.switch': 'Switch active store (multi-store)',
+  'store.business_type': 'Change store business type (owner only)',
+  'retail.manage': 'Use retail POS (kasir)',
+  'table.manage': 'Manage dining areas & tables',
+  'resto.view': 'View resto orders',
+  'resto.order': 'Create & edit resto orders',
+  'resto.settle': 'Settle resto bills (payment)',
+  'kitchen.view': 'Access kitchen display',
   'menu.view': 'View menus',
   'menu.create': 'Create menus',
   'menu.update': 'Update menus',
@@ -215,6 +251,8 @@ export const stores = pgTable('stores', {
   /** Default UI theme for this store (DARK/LIGHT/SYSTEM) — the fallback when a user
    * has not picked a personal theme yet. Individual users can always override. */
   default_theme: text('default_theme').notNull().default('DARK'),
+  /** Which POS modules this store runs: RETAIL (default), RESTO, or HYBRID (both). */
+  business_type: businessTypeEnum('business_type').notNull().default('RETAIL'),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -321,6 +359,9 @@ export const menus = pgTable(
     /** Children of linkless group headers have no own permission (group-level gate).
      * Link-bearing menus must have one; enforced in the API layer. */
     permission_code: text('permission_code').references(() => permissions.code, { onDelete: 'restrict' }),
+    /** Business-type scope: NULL = all stores, 'RETAIL'/'RESTO' = only stores whose
+     * business_type matches (or HYBRID). Filtered server-side in /menus/my. */
+    business_scope: text('business_scope'),
     sort_order: integer('sort_order').notNull().default(0),
     active: boolean('active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -331,6 +372,7 @@ export const menus = pgTable(
     index('menus_permission_idx').on(t.permission_code),
     index('menus_sort_idx').on(t.sort_order),
     index('menus_parent_idx').on(t.parent_id),
+    index('menus_scope_idx').on(t.business_scope),
   ],
 );
 export type MenuRow = typeof menus.$inferSelect;
@@ -376,6 +418,10 @@ export const products = pgTable(
     // Per-product discount (PERCENT = % of line subtotal, NOMINAL = flat Rp per line).
     discount_type: discountTypeEnum('discount_type').notNull().default('NOMINAL'),
     discount_value: numeric('discount_value', { precision: 18, scale: 2 }).notNull().default('0'),
+    /** Sales-channel availability — in HYBRID stores one product can be sold in
+     * both POSes, or restricted to just one (e.g. soap: retail only). */
+    available_retail: boolean('available_retail').notNull().default(true),
+    available_resto: boolean('available_resto').notNull().default(true),
     active: boolean('active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -542,6 +588,110 @@ export const auditLogs = pgTable(
     index('audit_logs_store_created_idx').on(t.store_id, t.created_at),
     index('audit_logs_user_idx').on(t.user_id),
     index('audit_logs_action_idx').on(t.action),
+  ],
+);
+
+/* ------------------------------- resto (POS Resto) ------------------------ */
+
+/** Dining area (zone) for the floor plan: 'Indoor', 'Teras', 'Lantai 2', ... */
+export const diningAreas = pgTable(
+  'dining_areas',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    store_id: uuid('store_id')
+      .notNull()
+      .references(() => stores.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    sort_order: integer('sort_order').notNull().default(0),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('dining_areas_store_idx').on(t.store_id), uniqueIndex('dining_areas_store_name_uq').on(t.store_id, t.name)],
+);
+
+/** Physical tables on the floor plan. Status is denormalized here for fast floor
+ * rendering; the authoritative state is the OPEN resto_order pointing at the table. */
+export const restoTables = pgTable(
+  'resto_tables',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    store_id: uuid('store_id')
+      .notNull()
+      .references(() => stores.id, { onDelete: 'cascade' }),
+    area_id: uuid('area_id').references(() => diningAreas.id, { onDelete: 'set null' }),
+    code: text('code').notNull(), // 'T1', 'T2', 'BAR-1'
+    seats: integer('seats').notNull().default(4),
+    status: tableStatusEnum('status').notNull().default('FREE'),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('resto_tables_store_code_uq').on(t.store_id, t.code),
+    index('resto_tables_store_idx').on(t.store_id),
+    index('resto_tables_area_idx').on(t.area_id),
+  ],
+);
+
+/** A resto dining session: open bill → items → kitchen → settle.
+ * Settlement creates a `sales` row via the SHARED checkout (sale_id link) —
+ * stock, invoice numbering, and payments stay single-sourced with retail. */
+export const restoOrders = pgTable(
+  'resto_orders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    store_id: uuid('store_id')
+      .notNull()
+      .references(() => stores.id, { onDelete: 'cascade' }),
+    table_id: uuid('table_id')
+      .notNull()
+      .references(() => restoTables.id, { onDelete: 'restrict' }),
+    /** Filled at settlement — links to the shared sales/payments/audit trail. */
+    sale_id: uuid('sale_id').references(() => sales.id, { onDelete: 'set null' }),
+    customer_id: uuid('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+    status: restoOrderStatusEnum('status').notNull().default('OPEN'),
+    guests: integer('guests').notNull().default(1),
+    opened_by: uuid('opened_by')
+      .notNull()
+      .references(() => users.id),
+    opened_at: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+    closed_at: timestamp('closed_at', { withTimezone: true }),
+    notes: text('notes'),
+  },
+  (t) => [
+    // One OPEN order per table at a time (partial unique index).
+    uniqueIndex('resto_orders_open_per_table_uq')
+      .on(t.table_id)
+      .where(sql`status = 'OPEN'`),
+    index('resto_orders_store_status_idx').on(t.store_id, t.status),
+    index('resto_orders_table_idx').on(t.table_id),
+    index('resto_orders_sale_idx').on(t.sale_id),
+  ],
+);
+
+/** Order line items. Name/price are snapshots (PRD 42) so open bills survive
+ * product price changes. kitchen_status drives the KDS pipeline per item. */
+export const restoOrderItems = pgTable(
+  'resto_order_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    order_id: uuid('order_id')
+      .notNull()
+      .references(() => restoOrders.id, { onDelete: 'cascade' }),
+    product_id: uuid('product_id').references(() => products.id, { onDelete: 'set null' }),
+    product_name: text('product_name').notNull(),
+    sku: text('sku'),
+    quantity: integer('quantity').notNull().default(1),
+    unit_price: numeric('unit_price', { precision: 18, scale: 2 }).notNull(),
+    discount: numeric('discount', { precision: 18, scale: 2 }).notNull().default('0'),
+    notes: text('notes'), // 'tanpa bawang', 'pedas level 2'
+    kitchen_status: text('kitchen_status').notNull().default('QUEUED'),
+    sent_at: timestamp('sent_at', { withTimezone: true }),
+    ready_at: timestamp('ready_at', { withTimezone: true }),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('resto_order_items_order_idx').on(t.order_id),
+    index('resto_order_items_product_idx').on(t.product_id),
+    index('resto_order_items_kitchen_idx').on(t.kitchen_status),
+    check('resto_order_items_qty_positive_chk', sql`${t.quantity} > 0`),
   ],
 );
 

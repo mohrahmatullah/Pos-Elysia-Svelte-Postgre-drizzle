@@ -8,7 +8,7 @@
  *    but only for roles that have no permission rows yet (re-runs never overwrite UI edits)
  *  - Owner gets the full set via seed, not a runtime `if role === owner` rule
  */
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { hashPassword } from '../lib/password';
 import * as s from './schema';
 import { ROLE_PERMISSIONS } from '../lib/permissions';
@@ -45,8 +45,9 @@ async function main() {
     console.log('   Store reused');
   }
 
-  // ---------------------- Second store (multi-store demo) ------------------------
+  // ---------------- Second store (multi-store demo, HYBRID) ----------------------
   // Created once; owner gets a membership so they can switch between stores.
+  // HYBRID so the resto module (tables/orders/kitchen) is demo-able here too.
   let [store2] = await db.select().from(s.stores).where(eq(s.stores.name, 'Toko Cabang Kelapa Gading')).limit(1);
   if (!store2) {
     [store2] = await db
@@ -57,9 +58,14 @@ async function main() {
         phone: '021-555-0456',
         invoice_prefix: 'CGD',
         tax_rate: '11.00',
+        business_type: 'HYBRID',
       })
       .returning();
-    console.log('   Second store created');
+    console.log('   Second store created (HYBRID)');
+  } else if (store2.business_type !== 'HYBRID') {
+    // Older seeds created it as RETAIL before the resto module existed.
+    await db.update(s.stores).set({ business_type: 'HYBRID' }).where(eq(s.stores.id, store2.id));
+    console.log('   Second store upgraded to HYBRID');
   }
 
   // -------------------- User-store memberships (multi-store) ---------------------
@@ -115,6 +121,27 @@ async function main() {
       .onConflictDoNothing();
   }
   console.log('   Role permissions ensured');
+
+  // ---- Channel role gap-fix: roles seeded BEFORE the channel permissions miss
+  // them. Grants are additive (never revokes what the UI configured) and re-run
+  // safely on every re-seed.
+  for (const [roleName, gapCodes] of [
+    ['manager', ['retail.manage', 'resto.view', 'resto.order', 'resto.settle', 'kitchen.view'] as const],
+    ['cashier', ['retail.manage', 'resto.view', 'resto.order'] as const],
+  ] as const) {
+    const roleId = roleByName[roleName];
+    if (!roleId) continue;
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(s.rolePermissions)
+      .where(and(eq(s.rolePermissions.role_id, roleId), inArray(s.rolePermissions.permission_code, [...gapCodes])));
+    if (count >= gapCodes.length) continue;
+    await db
+      .insert(s.rolePermissions)
+      .values(gapCodes.map((permission_code) => ({ role_id: roleId, permission_code })))
+      .onConflictDoNothing();
+    console.log(`   Resto gap-fix: ${roleName} granted ${[...gapCodes].join(', ')}`);
+  }
 
   // ------------------------------- Users (by email) ------------------------------
   const passwordHash = await hashPassword(DEFAULT_PASSWORD);
@@ -181,15 +208,21 @@ async function main() {
   const byHref = new Map(allMenus.filter((m) => m.href).map((m) => [m.href!, m]));
   const groupByLabel = new Map(allMenus.filter((m) => !m.href).map((m) => [m.label, m]));
 
-  async function ensureGroup(label: string, icon: string | null, sortOrder: number): Promise<string> {
+  async function ensureGroup(label: string, icon: string | null, sortOrder: number, businessScope: 'RETAIL' | 'RESTO' | null = null): Promise<string> {
     const existingRow = groupByLabel.get(label);
     if (existingRow) {
-      if (existingRow.icon !== icon || existingRow.sort_order !== sortOrder) {
-        await db.update(s.menus).set({ icon, sort_order: sortOrder, updated_at: new Date() }).where(eq(s.menus.id, existingRow.id));
+      if (existingRow.icon !== icon || existingRow.sort_order !== sortOrder || existingRow.business_scope !== businessScope) {
+        await db
+          .update(s.menus)
+          .set({ icon, sort_order: sortOrder, business_scope: businessScope, updated_at: new Date() })
+          .where(eq(s.menus.id, existingRow.id));
       }
       return existingRow.id;
     }
-    const [row] = await db.insert(s.menus).values({ label, href: null, icon, sort_order: sortOrder }).returning({ id: s.menus.id });
+    const [row] = await db
+      .insert(s.menus)
+      .values({ label, href: null, icon, sort_order: sortOrder, business_scope: businessScope })
+      .returning({ id: s.menus.id });
     return row.id;
   }
 
@@ -200,6 +233,7 @@ async function main() {
     permission_code: string;
     parent_id: string | null;
     sort_order: number;
+    business_scope?: 'RETAIL' | 'RESTO' | null;
   }): Promise<void> {
     const existingRow = byHref.get(input.href);
     if (existingRow) {
@@ -211,17 +245,25 @@ async function main() {
           permission_code: input.permission_code,
           parent_id: input.parent_id,
           sort_order: input.sort_order,
+          business_scope: input.business_scope ?? null,
           updated_at: new Date(),
         })
         .where(eq(s.menus.id, existingRow.id));
       return;
     }
-    await db.insert(s.menus).values(input).onConflictDoNothing();
+    await db.insert(s.menus).values({ ...input, business_scope: input.business_scope ?? null }).onConflictDoNothing();
   }
 
   // Top-level standalone
   await ensureItem({ label: 'Dashboard', href: '/', icon: 'mdi:view-dashboard-outline', permission_code: 'dashboard.view', parent_id: null, sort_order: 10 });
   await ensureItem({ label: 'Toko', href: '/stores', icon: 'mdi:store-cog-outline', permission_code: 'store.view', parent_id: null, sort_order: 15 });
+
+  // Group: Resto (business_scope RESTO — hidden for RETAIL stores; the GROUP itself
+  // is scoped so custom child menus cannot leak the whole group into retail).
+  const restoId = await ensureGroup('Resto', 'mdi:silverware-fork-knife', 35, 'RESTO');
+  await ensureItem({ label: 'POS Resto', href: '/resto', icon: 'mdi:food-outline', permission_code: 'resto.view', parent_id: restoId, sort_order: 36, business_scope: 'RESTO' });
+  await ensureItem({ label: 'Meja', href: '/resto/tables', icon: 'mdi:table-furniture', permission_code: 'table.manage', parent_id: restoId, sort_order: 37, business_scope: 'RESTO' });
+  await ensureItem({ label: 'Kitchen Display', href: '/kitchen', icon: 'mdi:chef-hat', permission_code: 'kitchen.view', parent_id: restoId, sort_order: 38, business_scope: 'RESTO' });
 
   // Group: Master Data
   const masterId = await ensureGroup('Master Data', 'mdi:database-outline', 20);
@@ -230,9 +272,11 @@ async function main() {
   await ensureItem({ label: 'Inventory', href: '/inventory', icon: 'mdi:warehouse', permission_code: 'inventory.view', parent_id: masterId, sort_order: 22 });
   await ensureItem({ label: 'Customers', href: '/customers', icon: 'mdi:account-group-outline', permission_code: 'customer.view', parent_id: masterId, sort_order: 23 });
 
-  // Group: Transaksi
+  // Group: Transaksi (POS Kasir is retail-scope; history is shared)
   const trxId = await ensureGroup('Transaksi', 'mdi:briefcase-outline', 30);
-  await ensureItem({ label: 'POS / Kasir', href: '/pos', icon: 'mdi:point-of-sale', permission_code: 'sales.create', parent_id: trxId, sort_order: 31 });
+  // Retail POS is scoped RETAIL + gated by its own channel permission, so a resto
+  // store never sees the retail kasir menu even if the role has sales.create.
+  await ensureItem({ label: 'POS / Kasir', href: '/pos', icon: 'mdi:point-of-sale', permission_code: 'retail.manage', parent_id: trxId, sort_order: 31, business_scope: 'RETAIL' });
   await ensureItem({ label: 'Riwayat Sales', href: '/sales', icon: 'mdi:receipt-text-outline', permission_code: 'sales.view', parent_id: trxId, sort_order: 32 });
 
   // Group: Laporan (group-gated: the header carries report.view for its children)
@@ -261,6 +305,44 @@ async function main() {
   ].filter((c) => !existingCust.has(c.name));
   if (wantedCustomers.length) {
     await db.insert(s.customers).values(wantedCustomers);
+  }
+
+  // ------------------- Resto floor plan demo (areas + tables) --------------------
+  // Only for stores with resto features; additive, so user edits are never clobbered.
+  {
+    const businessType = await db
+      .select({ t: s.stores.business_type })
+      .from(s.stores)
+      .where(eq(s.stores.id, store.id))
+      .limit(1)
+      .then((r) => r[0]?.t);
+    if (businessType === 'RESTO' || businessType === 'HYBRID') {
+      const haveAreas = await db.select({ name: s.diningAreas.name }).from(s.diningAreas).where(eq(s.diningAreas.store_id, store.id));
+      const areaNames = ['Indoor', 'Teras'];
+      const missing = areaNames.filter((n) => !haveAreas.some((a) => a.name === n));
+      if (missing.length) {
+        await db
+          .insert(s.diningAreas)
+          .values(missing.map((name, i) => ({ store_id: store.id, name, sort_order: i })))
+          .onConflictDoNothing();
+      }
+      const areaRows = await db.select().from(s.diningAreas).where(eq(s.diningAreas.store_id, store.id));
+      const area = (name: string) => areaRows.find((a) => a.name === name)?.id ?? null;
+      const existingTables = await db.select({ code: s.restoTables.code }).from(s.restoTables).where(eq(s.restoTables.store_id, store.id));
+      const haveTable = new Set(existingTables.map((t) => t.code));
+      const wantedTables = [
+        { code: 'T1', seats: 2, area_id: area('Indoor') },
+        { code: 'T2', seats: 4, area_id: area('Indoor') },
+        { code: 'T3', seats: 4, area_id: area('Indoor') },
+        { code: 'T4', seats: 6, area_id: area('Indoor') },
+        { code: 'R1', seats: 2, area_id: area('Teras') },
+        { code: 'R2', seats: 4, area_id: area('Teras') },
+      ].filter((t) => !haveTable.has(t.code));
+      if (wantedTables.length) {
+        await db.insert(s.restoTables).values(wantedTables.map((t) => ({ ...t, store_id: store.id })));
+      }
+      console.log(`   Resto floor ensured (areas: ${areaNames.join(', ')})`);
+    }
   }
 
   console.log('✅ Seed complete');

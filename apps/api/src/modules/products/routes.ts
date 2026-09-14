@@ -29,6 +29,8 @@ const productSelect = {
   tax_rate: products.tax_rate,
   discount_type: products.discount_type,
   discount_value: products.discount_value,
+  available_retail: products.available_retail,
+  available_resto: products.available_resto,
   active: products.active,
   created_at: products.created_at,
   stock: stockExpr,
@@ -120,6 +122,8 @@ export const productRoutes = new Elysia({ prefix: '/products' })
             tax_rate: String(body.tax_rate ?? 0),
             discount_type: body.discount_type ?? 'NOMINAL',
             discount_value: String(body.discount_value ?? 0),
+            available_retail: body.available_retail ?? true,
+            available_resto: body.available_resto ?? true,
             active: true,
           })
           .returning();
@@ -166,6 +170,8 @@ export const productRoutes = new Elysia({ prefix: '/products' })
         tax_rate: t.Optional(t.Number({ minimum: 0, maximum: 100 })),
         discount_type: t.Optional(t.Union([t.Literal('PERCENT'), t.Literal('NOMINAL')])),
         discount_value: t.Optional(t.Number({ minimum: 0 })),
+        available_retail: t.Optional(t.Boolean()),
+        available_resto: t.Optional(t.Boolean()),
         initial_stock: t.Optional(t.Number({ minimum: 0 })),
       }),
     },
@@ -187,6 +193,8 @@ export const productRoutes = new Elysia({ prefix: '/products' })
         if (body.tax_rate !== undefined) patch.tax_rate = String(body.tax_rate);
         if (body.discount_type !== undefined) patch.discount_type = body.discount_type;
         if (body.discount_value !== undefined) patch.discount_value = String(body.discount_value);
+        if (body.available_retail !== undefined) patch.available_retail = body.available_retail;
+        if (body.available_resto !== undefined) patch.available_resto = body.available_resto;
         if (body.active !== undefined) patch.active = body.active;
         const [updated] = await db
           .update(products)
@@ -222,6 +230,8 @@ export const productRoutes = new Elysia({ prefix: '/products' })
         tax_rate: t.Optional(t.Number({ minimum: 0, maximum: 100 })),
         discount_type: t.Optional(t.Union([t.Literal('PERCENT'), t.Literal('NOMINAL')])),
         discount_value: t.Optional(t.Number({ minimum: 0 })),
+        available_retail: t.Optional(t.Boolean()),
+        available_resto: t.Optional(t.Boolean()),
         active: t.Optional(t.Boolean()),
       }),
     },

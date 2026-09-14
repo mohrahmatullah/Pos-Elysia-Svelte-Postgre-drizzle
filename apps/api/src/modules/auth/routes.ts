@@ -3,6 +3,7 @@ import Elysia, { t } from 'elysia';
 import { login, logout, refresh, switchStore } from './service';
 import { ok, handleRouteError } from '../../lib/response';
 import { auth, requireUser, requirePerm, loadPermissionsForRole, loadUserStores } from '../../middleware/auth';
+import { getBusinessType } from '../resto/guards';
 import { writeAudit } from '../../lib/audit';
 
 /** Simple in-memory rate limiter for auth endpoints (PRD 25). */
@@ -32,8 +33,10 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['auth'] })
       rateLimit(ip);
       try {
         const result = await login(body.email, body.password);
-        // Attach the DB-backed permission set so the UI can render immediately.
+        // Attach the DB-backed permission set + store business type so the UI can
+        // render immediately (sidebar scoping happens without a second request).
         result.permissions = [...(await loadPermissionsForRole(result.roleId, result.role))];
+        result.business_type = await getBusinessType(result.user.storeId);
         await writeAudit({
           storeId: result.user.storeId,
           userId: result.user.id,
@@ -93,12 +96,16 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['auth'] })
     const auth = requireUser(user);
     const permissionSet = await loadPermissionsForRole(auth.roleId, auth.role);
     const stores = await loadUserStores(auth.userId);
+    // Business type of the ACTIVE store so the UI can scope menus/features per
+    // store when the user switches between retail and resto businesses.
+    const businessType = await getBusinessType(auth.storeId);
     return ok({
       user_id: auth.userId,
       store_id: auth.storeId,
       role: auth.role,
       session_id: auth.sessionId,
       permissions: [...permissionSet],
+      business_type: businessType,
       stores,
     });
   })

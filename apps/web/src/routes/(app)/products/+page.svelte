@@ -20,6 +20,8 @@
     tax_rate: string;
     discount_type: 'PERCENT' | 'NOMINAL';
     discount_value: string;
+    available_retail?: boolean;
+    available_resto?: boolean;
     active: boolean;
     stock: number;
   }
@@ -41,6 +43,8 @@
     initial_stock: number;
     discount_type: 'PERCENT' | 'NOMINAL';
     discount_value: number;
+    available_retail: boolean;
+    available_resto: boolean;
     active: boolean;
   }
 
@@ -56,6 +60,8 @@
     initial_stock: 0,
     discount_type: 'NOMINAL',
     discount_value: 0,
+    available_retail: true,
+    available_resto: true,
     active: true,
   };
 
@@ -119,6 +125,8 @@
       initial_stock: 0,
       discount_type: p.discount_type ?? 'NOMINAL',
       discount_value: Number.parseFloat(p.discount_value ?? '0'),
+      available_retail: p.available_retail ?? true,
+      available_resto: p.available_resto ?? true,
       active: p.active,
     };
     showModal = true;
@@ -138,6 +146,9 @@
         minimum_stock: form.minimum_stock,
         discount_type: form.discount_type,
         discount_value: form.discount_value || 0,
+        // Channel availability: which POS may sell this product.
+        available_retail: form.available_retail,
+        available_resto: form.available_resto,
       };
       if (form.id) {
         await patch(`/products/${form.id}`, { ...payload, active: form.active });
@@ -212,6 +223,10 @@
                     -{p.discount_value}{p.discount_type === 'PERCENT' ? '%' : ''}
                   </span>
                 {/if}
+                <span class="channel-badges">
+                  {#if p.available_retail !== false}<span class="badge gray" title="Tersedia di POS Retail">R</span>{/if}
+                  {#if p.available_resto !== false}<span class="badge gray" title="Tersedia di POS Resto">O</span>{/if}
+                </span>
               </td>
               <td><span class="badge {p.stock <= 0 ? 'red' : p.stock <= p.minimum_stock ? 'amber' : 'green'}">{p.stock}</span></td>
               <td><span class="badge {p.active ? 'green' : 'gray'}">{p.active ? 'Aktif' : 'Nonaktif'}</span></td>
@@ -286,6 +301,22 @@
         </div>
       </div>
       <p class="muted small">Diskon produk otomatis dipakai di POS setiap kali item ini dijual.</p>
+      <div class="channel-box">
+        <span class="channel-title"><Icon icon="mdi:storefront-outline" width="14" height="14" /> Ketersediaan Channel</span>
+        <label class="channel-row" for="f-retail">
+          <input id="f-retail" type="checkbox" bind:checked={form.available_retail} />
+          <span class="channel-name"><Icon icon="mdi:cart-outline" width="15" height="15" /> Retail</span>
+          <span class="muted small">Tampil di POS Kasir (toko retail)</span>
+        </label>
+        <label class="channel-row" for="f-resto">
+          <input id="f-resto" type="checkbox" bind:checked={form.available_resto} />
+          <span class="channel-name"><Icon icon="mdi:silverware-fork-knife" width="15" height="15" /> Resto</span>
+          <span class="muted small">Tampil di POS Resto (meja &amp; dapur)</span>
+        </label>
+        {#if !form.available_retail && !form.available_resto}
+          <p class="error-text small">Minimal satu channel harus dipilih.</p>
+        {/if}
+      </div>
       {#if !form.id}
         <label for="f-init">Stok Awal</label>
         <input id="f-init" type="number" min="0" bind:value={form.initial_stock} />
@@ -298,7 +329,7 @@
       {/if}
       <div class="actions">
         <button onclick={() => (showModal = false)}>Batal</button>
-        <button class="primary" onclick={save} disabled={saving || !form.sku || !form.name}>
+        <button class="primary" onclick={save} disabled={saving || !form.sku || !form.name || (!form.available_retail && !form.available_resto)}>
           {saving ? 'Menyimpan…' : 'Simpan'}
         </button>
       </div>
@@ -319,6 +350,57 @@
   }
   .modal { width: min(460px, 100%); }
   .modal h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+  .channel-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 0.9rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 8px);
+    background: var(--bg-soft, rgba(255, 255, 255, 0.03));
+  }
+  .channel-title {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+  }
+  .channel-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+  .channel-row input[type='checkbox'] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--accent-strong, #2f6fe0);
+  }
+  .channel-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    min-width: 70px;
+  }
+  .channel-row .small {
+    font-size: 0.72rem;
+  }
+  .channel-badges {
+    display: inline-flex;
+    gap: 0.2rem;
+    margin-left: 0.35rem;
+  }
+  .channel-badges .badge {
+    font-size: 0.6rem;
+    padding: 0.02rem 0.3rem;
+  }
   .actions {
     display: flex;
     justify-content: flex-end;

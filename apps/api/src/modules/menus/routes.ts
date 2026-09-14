@@ -9,8 +9,10 @@
 import Elysia, { t } from 'elysia';
 import { asc, eq } from 'drizzle-orm';
 import { db, schema } from '../../db';
+import { scopeMatchesStore } from '../../db/schema';
 import { ok, handleRouteError } from '../../lib/response';
 import { auth, requireUser, requirePerm } from '../../middleware/auth';
+import { getBusinessType } from '../resto/guards';
 import { writeAudit } from '../../lib/audit';
 import { Errors } from '../../lib/errors';
 import { ensurePermission, removeOrphanedMenuPermission } from '../../db/permission-catalog';
@@ -37,6 +39,8 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
       try {
       const me = requireUser(user);
       const fresh = await buildPermissionSet(me.roleId);
+      // Business-type scope: resto menus never reach retail stores (and vice versa).
+      const businessType = await getBusinessType(me.storeId);
 
         const rows = await db
           .select({
@@ -46,6 +50,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
             icon: schema.menus.icon,
             parent_id: schema.menus.parent_id,
             permission_code: schema.menus.permission_code,
+            business_scope: schema.menus.business_scope,
             sort_order: schema.menus.sort_order,
           })
           .from(schema.menus)
@@ -69,8 +74,13 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
         }[] = [];
 
         for (const parent of byParent.get(null) ?? []) {
+          // The parent's own scope gates the WHOLE node: a RESTO-scoped group (or
+          // standalone link) never renders in a RETAIL store, even when it contains
+          // scope-less children (e.g. custom menus created under it).
+          if (!scopeMatchesStore(parent.business_scope, businessType)) continue;
           const children = (byParent.get(parent.id) ?? []).filter((c) => {
-            // Child is gated by its own permission, or falls back to the group's.
+            // Business-type scope first, then permission (own, or the group's).
+            if (!scopeMatchesStore(c.business_scope, businessType)) return false;
             return canSee(c.permission_code) || canSee(parent.permission_code);
           });
 
@@ -137,6 +147,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
             icon: body.icon?.trim() || null,
             parent_id: body.parent_id ?? null,
             permission_code,
+            business_scope: body.business_scope ?? null,
             sort_order: body.sort_order ?? 0,
             active: body.active ?? true,
           })
@@ -166,6 +177,8 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
         icon: t.Optional(t.Nullable(t.String({ maxLength: 100 }))),
         parent_id: t.Optional(t.Nullable(t.String({ format: 'uuid' }))),
         permission_code: t.Optional(t.Nullable(t.String({ maxLength: 100 }))),
+        /** NULL = every store type; RETAIL/RESTO = only matching stores (HYBRID sees all). */
+        business_scope: t.Optional(t.Nullable(t.Union([t.Literal('RETAIL'), t.Literal('RESTO')]))),
         sort_order: t.Optional(t.Number({ minimum: 0 })),
         active: t.Optional(t.Boolean()),
       }),
@@ -191,6 +204,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
         if (body.icon !== undefined) patch.icon = body.icon?.trim() || null;
         if (body.parent_id !== undefined) patch.parent_id = body.parent_id;
         if (body.permission_code !== undefined) patch.permission_code = body.permission_code?.trim() || null;
+        if (body.business_scope !== undefined) patch.business_scope = body.business_scope;
         if (body.sort_order !== undefined) patch.sort_order = body.sort_order;
         if (body.active !== undefined) patch.active = body.active;
 
@@ -227,6 +241,7 @@ export const menuRoutes = new Elysia({ prefix: '/menus' })
         icon: t.Optional(t.Nullable(t.String({ maxLength: 100 }))),
         parent_id: t.Optional(t.Nullable(t.String({ format: 'uuid' }))),
         permission_code: t.Optional(t.Nullable(t.String({ maxLength: 100 }))),
+        business_scope: t.Optional(t.Nullable(t.Union([t.Literal('RETAIL'), t.Literal('RESTO')]))),
         sort_order: t.Optional(t.Number({ minimum: 0 })),
         active: t.Optional(t.Boolean()),
       }),

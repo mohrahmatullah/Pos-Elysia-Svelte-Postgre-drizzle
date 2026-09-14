@@ -23,6 +23,8 @@ export interface LoginResult {
   roleId: string;
   /** Filled by the route handler after login (DB-backed permission codes). */
   permissions?: string[];
+  /** Business type of the login store (RETAIL/RESTO/HYBRID) — scopes channel UI. */
+  business_type?: string;
   /** Multi-store: stores the user can work in (switcher). */
   stores?: { id: string; name: string; active: boolean }[];
 }

@@ -1,6 +1,7 @@
 /** Sales service (PRD 6.2, 26, 27, 29): atomic checkout, idempotency, stock locking. */
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
+import type { Tx } from '../../db';
 import { payments, products, saleItems, sales, stockMovements, stores } from '../../db/schema';
 import type { DiscountType } from '../../db/schema';
 import { countWhere } from '../../lib/response';
@@ -25,6 +26,16 @@ export interface CheckoutInput {
     reference_number?: string;
   };
   idempotencyKey?: string;
+  /** Optional finalizer executed INSIDE the checkout transaction, after the sale,
+   * items, stock movements and payment are written but before commit. Used by resto
+   * settlement so the order (SETTLED) and table (FREE) updates commit atomically
+   * with the sale — a crash can never leave a paid order stuck OPEN. */
+  finalize?: (tx: Tx, saleId: string) => Promise<void>;
+  /** Resto settlement: bill items were already served/consumed, so a stock
+   * shortfall (or a product deactivated after ordering) must NEVER block closing
+   * the bill — that is what left bills stuck OPEN with OCCUPIED tables. Stock is
+   * still written and may go negative; inventory can correct it afterwards. */
+  allowNegativeStock?: boolean;
 }
 
 export interface Actor {
@@ -45,6 +56,61 @@ function aggregateQuantity(items: CheckoutItemInput[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const item of items) map.set(item.product_id, (map.get(item.product_id) ?? 0) + item.quantity);
   return map;
+}
+
+/** Grand total is rounded UP to the nearest Rp 100 (smallest coin) so change is
+ * always handable in cash; the difference is stored as `rounding`.
+ * (Rp 100 = 100 rupiah = 10,000 cents in our integer-cents math.) */
+const ROUND_STEP_CENTS = 10_000;
+
+/** Order discount resolution (PRD 29): explicit input wins; otherwise the store's
+ * general default discount (Store Settings) applies. PERCENT = % of subtotal,
+ * NOMINAL = flat Rp. Shared by checkout and the resto bill preview. */
+function resolveOrderDiscountCents(
+  explicit: { discount?: number; discount_type?: DiscountType } | undefined,
+  subtotalCents: number,
+  store: { default_discount_type: DiscountType; default_discount_value: string },
+): number {
+  if (explicit?.discount !== undefined) {
+    const v = Math.max(0, explicit.discount);
+    return explicit.discount_type === 'PERCENT' ? Math.round((subtotalCents * Math.min(v, 100)) / 100) : toCents(v);
+  }
+  const dv = Number.parseFloat(store.default_discount_value);
+  if (dv > 0) {
+    return store.default_discount_type === 'PERCENT' ? Math.round((subtotalCents * Math.min(dv, 100)) / 100) : toCents(dv);
+  }
+  return 0;
+}
+
+/** Shared pricing tail (PRD 29): order discount → prorate across lines → tax →
+ * grand total with Rp 100 ceil rounding. Used by checkout (authoritative) AND the
+ * resto bill preview, so displayed totals always equal charged totals.
+ * The sale header keeps subtotal pre-order-discount; `discount` carries it and
+ * tax/grand already reflect the reduced taxable amount (receipt "Diskon" display). */
+export function computeDisplayTotals(
+  lines: { unitPriceCents: number; quantity: number; discountCents: number; taxRatePercent: number }[],
+  orderDiscountCents: number,
+  storeTaxRatePercent: number,
+) {
+  const pre = computeTotals(lines, 0, 0);
+  const clamped = Math.min(orderDiscountCents, pre.subtotal);
+  const prorated = prorateDiscount(clamped, lines.map((l) => l.unitPriceCents * l.quantity - l.discountCents));
+  const totals = computeTotals(
+    lines.map((l, i) => ({ ...l, discountCents: l.discountCents + prorated[i] })),
+    0,
+    storeTaxRatePercent,
+  );
+  const roundedGrand = Math.ceil(totals.grandTotal / ROUND_STEP_CENTS) * ROUND_STEP_CENTS;
+  return {
+    subtotal: pre.subtotal,
+    discount: clamped,
+    tax: totals.tax,
+    rounding: roundedGrand - totals.grandTotal,
+    grandTotal: roundedGrand,
+    /** Order discount prorated per line (index-aligned with the input lines) so the
+     * caller can persist per-line discount amounts identical to the header math. */
+    prorated,
+  };
 }
 
 async function nextInvoiceNumber(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], storeId: string, prefix: string): Promise<string> {
@@ -103,7 +169,7 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
     const byId = new Map(locked.map((p) => [p.id, p]));
     for (const item of input.items) {
       const p = byId.get(item.product_id)!;
-      if (!p.active) throw Errors.productInactive(p.sku);
+      if (!p.active && !input.allowNegativeStock) throw Errors.productInactive(p.sku);
     }
 
     // Stock validation under row locks (PRD 6.2 step 3, PRD 26).
@@ -112,7 +178,7 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
         .select({ current: sql<number>`COALESCE(SUM(${stockMovements.quantity_in}) - SUM(${stockMovements.quantity_out}), 0)::int` })
         .from(stockMovements)
         .where(eq(stockMovements.product_id, productId));
-      if (Number(current) < qty) {
+      if (Number(current) < qty && !input.allowNegativeStock) {
         throw Errors.insufficientStock(byId.get(productId)!.sku, Number(current));
       }
     }
@@ -147,53 +213,17 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
       }
     }
 
-    const pre = computeTotals(lines, 0, 0); // subtotal before order discount
-    // Order discount resolution: explicit input wins; otherwise the store's
-    // general default discount (Store Settings) applies to the transaction.
-    // PERCENT = % of subtotal, NOMINAL = flat Rp.
-    let orderDiscountCents = 0;
-    if (input.discount !== undefined) {
-      const v = Math.max(0, input.discount);
-      orderDiscountCents = input.discount_type === 'PERCENT' ? Math.round((pre.subtotal * Math.min(v, 100)) / 100) : toCents(v);
-    } else {
-      const dv = Number.parseFloat(store.default_discount_value);
-      if (dv > 0) {
-        orderDiscountCents =
-          store.default_discount_type === 'PERCENT' ? Math.round((pre.subtotal * Math.min(dv, 100)) / 100) : toCents(dv);
-      }
-    }
-    if (orderDiscountCents > pre.subtotal) throw Errors.validation('Discount melebihi subtotal');
-    const prorated = prorateDiscount(orderDiscountCents, lines.map((l) => l.unitPriceCents * l.quantity - l.discountCents));
-
-    // Tax/grand total are computed on lines with the order discount prorated in
-    // (so per-line tax rates see discounted line values).
-    const totals = computeTotals(
-      lines.map((l, i) => ({ ...l, discountCents: l.discountCents + prorated[i] })),
-      0,
-      storeTaxRate,
-    );
-
-    // The sale header must display the order discount the cashier entered:
-    // subtotal stays pre-order-discount (PRD 29 pipeline display), discount carries
-    // it, and tax/grand already reflect the reduced taxable amount. Without this,
-    // sales.discount always stored 0 and receipts showed "Diskon Rp 0".
-    // Grand total is rounded UP to the nearest Rp 100 (smallest coin) so change is
-    // always handable in cash; the difference is stored as `rounding`.
-    // (Rp 100 = 100 rupiah = 10,000 cents in our integer-cents math.)
-    const rawGrand = totals.grandTotal;
-    const roundedGrand = Math.ceil(rawGrand / 10_000) * 10_000;
-    const roundingCents = roundedGrand - rawGrand;
-    const displayTotals = {
-      subtotal: pre.subtotal,
-      discount: Math.min(orderDiscountCents, pre.subtotal),
-      tax: totals.tax,
-      rounding: roundingCents,
-      grandTotal: roundedGrand,
-    };
+    const subtotalBefore = computeTotals(lines, 0, 0).subtotal; // before order discount
+    const orderDiscountCents = resolveOrderDiscountCents(input, subtotalBefore, store);
+    if (orderDiscountCents > subtotalBefore) throw Errors.validation('Discount melebihi subtotal');
+    // Shared pricing tail: prorate → tax → Rp 100 ceil rounding. The resto bill
+    // preview uses the same function so displayed totals == charged totals.
+    const displayTotals = computeDisplayTotals(lines, orderDiscountCents, storeTaxRate);
 
     // Payment validation (PRD 6.4): reject underpayment unless partial enabled (not in MVP).
+    // Underpayment is checked against the ROUNDED grand total (what the customer is asked to pay).
     const paidCents = toCents(input.payment.amount_paid);
-    if (paidCents < totals.grandTotal) throw Errors.invalidPayment('Jumlah bayar kurang dari total transaksi');
+    if (paidCents < displayTotals.grandTotal) throw Errors.invalidPayment('Jumlah bayar kurang dari total transaksi');
 
     const invoiceNumber = await nextInvoiceNumber(tx, actor.storeId, store.invoice_prefix);
 
@@ -216,7 +246,7 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
       .returning({ id: sales.id, invoice_number: sales.invoice_number, grand_total: sales.grand_total });
 
     for (const [i, l] of lines.entries()) {
-      const lineDiscountCents = l.discountCents + prorated[i];
+      const lineDiscountCents = l.discountCents + displayTotals.prorated[i];
       const lineTotalCents = l.unitPriceCents * l.quantity - lineDiscountCents;
       const [saleItem] = await tx
         .insert(saleItems)
@@ -255,7 +285,10 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
       paid_at: new Date(),
     });
 
-    const change = changeCents(paidCents, totals.grandTotal);
+    // Caller-specific finalization commits atomically with the sale (resto settle).
+    if (input.finalize) await input.finalize(tx, sale.id);
+
+    const change = changeCents(paidCents, displayTotals.grandTotal);
     return { saleId: sale.id, invoiceNumber: sale.invoice_number, grandTotal: sale.grand_total, change: fromCents(change), idempotentReplay: false as const };
   });
 

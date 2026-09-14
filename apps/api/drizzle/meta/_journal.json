@@ -71,6 +71,20 @@
       "when": 1789364134315,
       "tag": "0009_wealthy_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789365073318,
+      "tag": "0010_lonely_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789365447550,
+      "tag": "0011_stale_bloodscream",
+      "breakpoints": true
     }
   ]
 }

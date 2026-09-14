@@ -17,9 +17,12 @@
     icon: string | null;
     parent_id: string | null;
     permission_code: string | null;
+    business_scope: 'RETAIL' | 'RESTO' | null;
     sort_order: number;
     active: boolean;
   }
+  type Scope = '' | 'RETAIL' | 'RESTO';
+  const SCOPE_LABEL: Record<Scope, string> = { '': 'Semua toko', RETAIL: 'Retail saja', RESTO: 'Resto saja' };
 
   let menus = $state<MenuRow[]>([]);
   let loading = $state(true);
@@ -49,11 +52,11 @@
 
   // Create modal
   let showCreate = $state(false);
-  let form = $state({ label: '', href: '', icon: '', permission_code: '', sort_order: 0, asGroup: false, parent_id: '' });
+  let form = $state({ label: '', href: '', icon: '', permission_code: '', business_scope: '' as Scope, sort_order: 0, asGroup: false, parent_id: '' });
 
   // Edit modal
   let editing = $state<MenuRow | null>(null);
-  let editForm = $state({ label: '', href: '', icon: '', permission_code: '', sort_order: 0, active: true, parent_id: '' });
+  let editForm = $state({ label: '', href: '', icon: '', permission_code: '', business_scope: '' as Scope, sort_order: 0, active: true, parent_id: '' });
 
   function pickIcon(icon: string) {
     if (editing) editForm.icon = icon;
@@ -61,7 +64,7 @@
   }
 
   function openCreate() {
-    form = { label: '', href: '', icon: '', permission_code: '', sort_order: 0, asGroup: false, parent_id: '' };
+    form = { label: '', href: '', icon: '', permission_code: '', business_scope: '', sort_order: 0, asGroup: false, parent_id: '' };
     iconQuery = '';
     showCreate = true;
   }
@@ -90,11 +93,12 @@
         icon: normalizeIconInput(form.icon),
         permission_code: form.permission_code || null,
         parent_id: form.parent_id || null,
+        business_scope: form.business_scope || null,
         sort_order: form.sort_order || undefined,
       });
       toastSuccess(isGroup ? `Grup "${form.label}" dibuat` : `Menu "${form.label}" dibuat`);
       showCreate = false;
-      form = { label: '', href: '', icon: '', permission_code: '', sort_order: 0, asGroup: false, parent_id: '' };
+      form = { label: '', href: '', icon: '', permission_code: '', business_scope: '', sort_order: 0, asGroup: false, parent_id: '' };
       await load();
     } catch (e) {
       toastError((e as Error).message);
@@ -110,6 +114,7 @@
       href: m.href ?? '',
       icon: m.icon ?? '',
       permission_code: m.permission_code ?? '',
+      business_scope: (m.business_scope ?? '') as Scope,
       sort_order: m.sort_order,
       active: m.active,
       parent_id: m.parent_id ?? '',
@@ -126,6 +131,7 @@
         icon: normalizeIconInput(editForm.icon),
         permission_code: editForm.permission_code || null,
         parent_id: editForm.parent_id || null,
+        business_scope: editForm.business_scope || null,
         sort_order: editForm.sort_order,
         active: editForm.active,
       });
@@ -179,7 +185,7 @@
   {:else}
     <div class="card" style="padding:0">
       <table>
-        <thead><tr><th>Urut</th><th>Menu</th><th>Link</th><th>Permission</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Urut</th><th>Menu</th><th>Link</th><th>Permission</th><th>Scope</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {#each tree as node (node.row.id)}
             <!-- Top-level row -->
@@ -194,6 +200,7 @@
               </td>
               <td class="mono">{node.row.href ?? '—'}</td>
               <td>{#if node.row.permission_code}<span class="badge gray mono">{node.row.permission_code}</span>{:else}<span class="muted">—</span>{/if}</td>
+              <td><span class="badge {node.row.business_scope === 'RESTO' ? 'amber' : node.row.business_scope === 'RETAIL' ? 'green' : 'gray'}">{SCOPE_LABEL[(node.row.business_scope ?? '') as Scope]}</span></td>
               <td>
                 {#if canUpdate}
                   <button class="link" onclick={() => toggleActive(node.row)}>
@@ -219,6 +226,7 @@
                 </td>
                 <td class="mono">{m.href}</td>
                 <td><span class="badge gray mono">{m.permission_code ?? '—'}</span></td>
+                <td><span class="badge {m.business_scope === 'RESTO' ? 'amber' : m.business_scope === 'RETAIL' ? 'green' : 'gray'}">{SCOPE_LABEL[(m.business_scope ?? '') as Scope]}</span></td>
                 <td>
                   {#if canUpdate}
                     <button class="link" onclick={() => toggleActive(m)}>
@@ -235,7 +243,7 @@
               </tr>
             {/each}
           {:else}
-            <tr><td colspan="6" class="muted" style="text-align:center;padding:2rem">Belum ada menu.</td></tr>
+            <tr><td colspan="7" class="muted" style="text-align:center;padding:2rem">Belum ada menu.</td></tr>
           {/each}
         </tbody>
       </table>
@@ -299,6 +307,12 @@
       <label for="m-perm">Permission code {form.asGroup ? '(opsional — untuk mengunci seluruh grup)' : '*'}</label>
       <input id="m-perm" bind:value={form.permission_code} placeholder="taxreport.view" maxlength={100} />
       <p class="muted small">Jika kode belum ada di katalog, otomatis dibuat dan diberikan ke owner.</p>
+      <label for="m-scope">Scope Bisnis (menu hanya muncul di toko dengan tipe ini)</label>
+      <select id="m-scope" bind:value={form.business_scope}>
+        <option value="">Semua tipe toko</option>
+        <option value="RETAIL">Retail saja</option>
+        <option value="RESTO">Resto saja</option>
+      </select>
       <label for="m-sort">Urutan tampil (angka kecil = atas)</label>
       <input id="m-sort" type="number" min="0" bind:value={form.sort_order} />
       <div class="actions">
@@ -363,6 +377,12 @@
       </div>
       <label for="e-perm">Permission code</label>
       <input id="e-perm" bind:value={editForm.permission_code} maxlength={100} />
+      <label for="e-scope">Scope Bisnis (menu hanya muncul di toko dengan tipe ini)</label>
+      <select id="e-scope" bind:value={editForm.business_scope}>
+        <option value="">Semua tipe toko</option>
+        <option value="RETAIL">Retail saja</option>
+        <option value="RESTO">Resto saja</option>
+      </select>
       <label for="e-sort">Urutan tampil</label>
       <input id="e-sort" type="number" min="0" bind:value={editForm.sort_order} />
       <label for="e-active">Status</label>

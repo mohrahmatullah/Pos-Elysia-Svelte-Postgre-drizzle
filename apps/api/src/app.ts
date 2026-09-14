@@ -15,6 +15,7 @@ import { permissionRoutes } from './modules/permissions/routes';
 import { roleRoutes } from './modules/roles/routes';
 import { menuRoutes } from './modules/menus/routes';
 import { storeRoutes } from './modules/stores/routes';
+import { restoRoutes } from './modules/resto';
 import { auth as authPlugin } from './middleware/auth';
 import { requestLogger } from './lib/request-id';
 import { config } from './config';
@@ -35,7 +36,8 @@ const api = new Elysia({ prefix: '/api/v1' })
   .use(permissionRoutes)
   .use(roleRoutes)
   .use(menuRoutes)
-  .use(storeRoutes);
+  .use(storeRoutes)
+  .use(restoRoutes);
 
 export const app = new Elysia()
   .use(requestLogger)

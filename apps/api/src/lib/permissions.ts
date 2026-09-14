@@ -33,6 +33,13 @@ export const ROLE_PERMISSIONS: Record<string, readonly PermissionCode[]> = {
     'customer.delete',
     'settings.manage',
     'report.view',
+    // channel access: both POS types (hybrid stores)
+    'retail.manage',
+    'resto.view',
+    'resto.order',
+    'resto.settle',
+    'kitchen.view',
+    'table.manage',
   ] as const,
   cashier: [
     'dashboard.view',
@@ -46,5 +53,9 @@ export const ROLE_PERMISSIONS: Record<string, readonly PermissionCode[]> = {
     'customer.create',
     'customer.update',
     'report.view',
+    // channel access: retail POS + resto order taking (no settle — kasir only pays)
+    'retail.manage',
+    'resto.view',
+    'resto.order',
   ] as const,
 };
