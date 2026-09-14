@@ -10,6 +10,7 @@
   import { menuItems, loadMenus, clearMenus } from '$lib/menu';
   import SidebarNav from '$lib/components/SidebarNav.svelte';
   import { Icon } from '$lib/icons';
+  import { currentTheme, themePreference, setTheme, initTheme, type ThemeChoice } from '$lib/stores/theme';
 
   let { children } = $props();
 
@@ -19,6 +20,44 @@
     hydrateUser();
     void loadPermissions().then(loadMenus);
   });
+
+  // Theme: init once with the store default (from /settings when the user can read
+  // it), then every role can cycle DARK → LIGHT → SYSTEM from the topbar.
+  let themeReady = $state(false);
+  $effect(() => {
+    if (themeReady) return;
+    themeReady = true;
+    (async () => {
+      let storeDefault: string | null = null;
+      try {
+        const res = await fetch('/api/v1/settings', {
+          headers: { authorization: `Bearer ${JSON.parse(localStorage.getItem('pos.auth') ?? '{}').accessToken ?? ''}` },
+        });
+        if (res.ok) storeDefault = ((await res.json()).data as { default_theme?: string }).default_theme ?? null;
+      } catch {
+        /* theme falls back to SYSTEM */
+      }
+      initTheme(storeDefault);
+    })();
+  });
+
+  const CYCLE: ThemeChoice[] = ['DARK', 'LIGHT', 'SYSTEM'];
+  const NEXT_ICON: Record<ThemeChoice, string> = {
+    DARK: 'mdi:weather-night',
+    LIGHT: 'mdi:weather-sunny',
+    SYSTEM: 'mdi:theme-light-dark',
+  };
+  const themeLabel: Record<ThemeChoice, string> = {
+    DARK: 'Gelap',
+    LIGHT: 'Terang',
+    SYSTEM: 'Sistem',
+  };
+  function cycleTheme() {
+    let cur: ThemeChoice = 'SYSTEM';
+    const unsub = themePreference.subscribe((v) => (cur = v));
+    unsub();
+    setTheme(CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length]);
+  }
 
   // Logouts must also clear menus.
   $effect(() => {
@@ -136,6 +175,14 @@
         <Icon icon="mdi:menu" width="20" height="20" />
       </button>
       <span class="flex-1 font-bold tracking-tight text-ink">POS</span>
+      <button
+        class="grid h-9 w-9 place-items-center rounded-lg border border-edge bg-surface-2"
+        aria-label="Ganti tema"
+        title={`Tema: ${themeLabel[$themePreference]}`}
+        onclick={cycleTheme}
+      >
+        <Icon icon={NEXT_ICON[$themePreference]} width="18" height="18" />
+      </button>
       <button
         class="grid h-9 w-9 place-items-center rounded-full bg-strong text-xs font-bold text-white"
         aria-label="Akun"

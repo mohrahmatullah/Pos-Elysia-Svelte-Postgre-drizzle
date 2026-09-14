@@ -212,6 +212,9 @@ export const stores = pgTable('stores', {
   default_discount_value: numeric('default_discount_value', { precision: 18, scale: 2 }).notNull().default('0'),
   /** Inactive stores are hidden from the switcher and reject new activity. */
   active: boolean('active').notNull().default(true),
+  /** Default UI theme for this store (DARK/LIGHT/SYSTEM) — the fallback when a user
+   * has not picked a personal theme yet. Individual users can always override. */
+  default_theme: text('default_theme').notNull().default('DARK'),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

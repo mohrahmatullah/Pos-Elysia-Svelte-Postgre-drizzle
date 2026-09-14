@@ -15,6 +15,7 @@
     tax_rate: string;
     default_discount_type: 'PERCENT' | 'NOMINAL';
     default_discount_value: string;
+    default_theme: 'DARK' | 'LIGHT' | 'SYSTEM';
   }
 
   let form = $state<StoreSettings | null>(null);
@@ -43,6 +44,7 @@
         tax_rate: Number.parseFloat(form.tax_rate),
         default_discount_type: form.default_discount_type,
         default_discount_value: Number.parseFloat(form.default_discount_value) || 0,
+        default_theme: form.default_theme,
       })).data;
       toastSuccess('Pengaturan tersimpan');
     } catch (e) {
@@ -105,6 +107,15 @@
       <p class="muted small">
         Diskon umum otomatis dipakai di POS untuk setiap transaksi baru (kasir masih bisa mengubahnya).
         Nilai 0 = tidak ada diskon umum.
+      </p>
+      <label for="s-theme">Tema Default Aplikasi</label>
+      <select id="s-theme" bind:value={form.default_theme}>
+        <option value="DARK">Gelap</option>
+        <option value="LIGHT">Terang</option>
+        <option value="SYSTEM">Ikuti Sistem</option>
+      </select>
+      <p class="muted small">
+        Dipakai saat user belum memilih tema sendiri. Setiap user tetap bisa mengganti tema kapan saja lewat tombol di topbar.
       </p>
       <label for="s-footer">Footer Receipt</label>
       <textarea id="s-footer" rows="2" bind:value={form.receipt_footer}></textarea>

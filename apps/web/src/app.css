@@ -22,7 +22,9 @@
   --radius-ctl: 10px;
 }
 
-/* Legacy variable aliases — existing components keep working unchanged. */
+/* Legacy variable aliases — existing components keep working unchanged.
+ * Default = DARK. Light theme is applied via html[data-theme='light'] (set by
+ * the theme switcher in the topbar / default_theme from Store Settings). */
 :root {
   --bg: #0f1115;
   --bg-soft: #171a21;
@@ -36,6 +38,45 @@
   --red: #ff5c5c;
   --amber: #ffb020;
   --radius: 10px;
+}
+
+html[data-theme='light'] {
+  --bg: #f5f6f8;
+  --bg-soft: #eceef2;
+  --bg-card: #ffffff;
+  --border: #d9dde5;
+  --text: #1c2430;
+  --text-dim: #5d6675;
+  --accent: #2f6fe0;
+  --accent-strong: #1e5ac2;
+  --green: #159a52;
+  --red: #d93a3a;
+  --amber: #b97a08;
+  --radius: 10px;
+}
+
+/* Smooth theme transition. */
+body,
+.card,
+input,
+select,
+textarea,
+.modal {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+/* Scrollbars follow the theme. */
+html[data-theme='light'] * {
+  scrollbar-color: #b9c0cc transparent;
+}
+html[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: #c3cad6;
+}
+html[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background-color: #aab3c2;
 }
 
 * {
