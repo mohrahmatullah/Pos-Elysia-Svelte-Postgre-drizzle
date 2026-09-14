@@ -56,7 +56,9 @@
   let discountPercent = orderDiscountPercent;
   const effectiveDiscountRp = $derived($totals.discount);
 
-  // Payment modal
+  // Payment modal — web POS is cash-only for now. Other methods (TRANSFER/
+  // CARD/QRIS) are kept in the code but hidden — re-enable by removing `hidden`
+  // on the <option>s and the {#if payMethod !== 'CASH'} guards below.
   let showPayment = $state(false);
   let payMethod = $state<'CASH' | 'TRANSFER' | 'CARD' | 'QRIS'>('CASH');
   let amountPaid = $state(0);
@@ -313,14 +315,16 @@
       <label for="method">Metode</label>
       <select id="method" bind:value={payMethod}>
         <option value="CASH">Tunai</option>
-        <option value="TRANSFER">Transfer</option>
-        <option value="CARD">Kartu</option>
-        <option value="QRIS">QRIS</option>
+        <option value="TRANSFER" hidden>Transfer</option>
+        <option value="CARD" hidden>Kartu</option>
+        <option value="QRIS" hidden>QRIS</option>
       </select>
       <label for="paid">Jumlah Bayar</label>
       <input id="paid" type="number" bind:value={amountPaid} min={$totals.grandTotal} />
-      <label for="ref">Referensi (opsional)</label>
-      <input id="ref" bind:value={referenceNumber} placeholder="No. referensi transfer/kartu" />
+      {#if payMethod !== 'CASH'}
+        <label for="ref">Referensi (opsional)</label>
+        <input id="ref" bind:value={referenceNumber} placeholder="No. referensi transfer/kartu" />
+      {/if}
       <div class="pay-summary">
         <div class="ps-row"><span>Total belanja</span><span>{formatIDR($totals.grandTotal)}</span></div>
         <div class="ps-row"><span>Uang dibayarkan</span><span>{formatIDR(amountPaid)}</span></div>
@@ -346,11 +350,8 @@
         {/each}
         <button onclick={() => (amountPaid = $totals.grandTotal)}>PAS</button>
       </div>
-      {#if amountPaid > 0 && amountPaid < $totals.grandTotal}
-        <p class="error-text">Uang kurang Rp {formatIDR($totals.grandTotal - amountPaid).replace('Rp ', '')} dari total.</p>
-      {/if}
       {#if amountPaid < $totals.grandTotal}
-        <p class="error-text">Jumlah bayar kurang dari total.</p>
+        <p class="error-text">Uang kurang {formatIDR($totals.grandTotal - amountPaid)} dari total.</p>
       {/if}
       <div class="actions">
         <button onclick={() => (showPayment = false)}>Batal (ESC)</button>
