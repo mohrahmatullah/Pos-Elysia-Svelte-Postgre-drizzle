@@ -146,4 +146,36 @@ export const customerRoutes = new Elysia({ prefix: '/customers' })
         notes: t.Optional(t.Nullable(t.String())),
       }),
     },
+  )
+  .delete(
+    '/:id',
+    async ({ params, user, request }) => {
+      try {
+        const auth = requirePerm(user, 'customer.delete');
+        // Customers with sales history cannot be deleted (FK + audit trail);
+        // deletion only allowed while no transaction references them.
+        const [{ count }] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(sales)
+          .where(eq(sales.customer_id, params.id));
+        if (count > 0) throw Errors.conflict('Customer memiliki riwayat transaksi dan tidak dapat dihapus');
+        const [deleted] = await db
+          .delete(customers)
+          .where(and(eq(customers.id, params.id), eq(customers.store_id, auth.storeId)))
+          .returning({ id: customers.id, name: customers.name });
+        if (!deleted) throw Errors.notFound('Customer tidak ditemukan');
+        await writeAudit({
+          storeId: auth.storeId,
+          userId: auth.userId,
+          action: 'DELETE_CUSTOMER',
+          entityType: 'customer',
+          entityId: deleted.id,
+          metadata: { name: deleted.name },
+        });
+        return ok({ deleted: true, id: deleted.id });
+      } catch (e) {
+        return handleRouteError(e);
+      }
+    },
+    { params: t.Object({ id: t.String({ format: 'uuid' }) }) },
   );

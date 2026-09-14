@@ -7,6 +7,7 @@
   import { get, post, patch, del } from '$lib/api';
   import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { permissions } from '$lib/permissions';
   import { Icon, filterIconChoices, isIconifyName, normalizeIconInput } from '$lib/icons';
 
   interface MenuRow {
@@ -23,6 +24,11 @@
   let menus = $state<MenuRow[]>([]);
   let loading = $state(true);
   let saving = $state(false);
+
+  // Granular gates: menu.view (page), menu.create / menu.update / menu.delete (actions).
+  const canCreate = $derived($permissions.permissions.has('menu.create'));
+  const canUpdate = $derived($permissions.permissions.has('menu.update'));
+  const canDelete = $derived($permissions.permissions.has('menu.delete'));
 
   /** Group headers (href null) can be chosen as parent. */
   const groupOptions = $derived(menus.filter((m) => m.href === null));
@@ -157,7 +163,9 @@
 <div class="page">
   <div class="page-header">
     <h1>Menus</h1>
-    <button class="primary" onclick={openCreate}><Icon icon="mdi:plus" width="16" height="16" /> Menu Baru</button>
+    {#if canCreate}
+      <button class="primary" onclick={openCreate}><Icon icon="mdi:plus" width="16" height="16" /> Menu Baru</button>
+    {/if}
   </div>
 
   <p class="muted small">
@@ -187,13 +195,17 @@
               <td class="mono">{node.row.href ?? '—'}</td>
               <td>{#if node.row.permission_code}<span class="badge gray mono">{node.row.permission_code}</span>{:else}<span class="muted">—</span>{/if}</td>
               <td>
-                <button class="link" onclick={() => toggleActive(node.row)}>
+                {#if canUpdate}
+                  <button class="link" onclick={() => toggleActive(node.row)}>
+                    <span class="badge {node.row.active ? 'green' : 'gray'}">{node.row.active ? 'Aktif' : 'Disembunyikan'}</span>
+                  </button>
+                {:else}
                   <span class="badge {node.row.active ? 'green' : 'gray'}">{node.row.active ? 'Aktif' : 'Disembunyikan'}</span>
-                </button>
+                {/if}
               </td>
               <td style="display:flex;gap:.4rem">
-                <button class="act" title="Edit menu" aria-label="Edit" onclick={() => openEdit(node.row)}><Icon icon="mdi:pencil" width="15" height="15" /></button>
-                <button class="danger act" title="Hapus menu" aria-label="Hapus" onclick={() => remove(node.row)}><Icon icon="mdi:trash-can-outline" width="15" height="15" /></button>
+                {#if canUpdate}<button class="act" title="Edit menu" aria-label="Edit" onclick={() => openEdit(node.row)}><Icon icon="mdi:pencil" width="15" height="15" /></button>{/if}
+                {#if canDelete}<button class="danger act" title="Hapus menu" aria-label="Hapus" onclick={() => remove(node.row)}><Icon icon="mdi:trash-can-outline" width="15" height="15" /></button>{/if}
               </td>
             </tr>
             {#each node.children as m (m.id)}
@@ -208,13 +220,17 @@
                 <td class="mono">{m.href}</td>
                 <td><span class="badge gray mono">{m.permission_code ?? '—'}</span></td>
                 <td>
-                  <button class="link" onclick={() => toggleActive(m)}>
+                  {#if canUpdate}
+                    <button class="link" onclick={() => toggleActive(m)}>
+                      <span class="badge {m.active ? 'green' : 'gray'}">{m.active ? 'Aktif' : 'Disembunyikan'}</span>
+                    </button>
+                  {:else}
                     <span class="badge {m.active ? 'green' : 'gray'}">{m.active ? 'Aktif' : 'Disembunyikan'}</span>
-                  </button>
+                  {/if}
                 </td>
                 <td style="display:flex;gap:.4rem">
-                  <button class="act" title="Edit menu" aria-label="Edit" onclick={() => openEdit(m)}><Icon icon="mdi:pencil" width="15" height="15" /></button>
-                  <button class="danger act" title="Hapus menu" aria-label="Hapus" onclick={() => remove(m)}><Icon icon="mdi:trash-can-outline" width="15" height="15" /></button>
+                  {#if canUpdate}<button class="act" title="Edit menu" aria-label="Edit" onclick={() => openEdit(m)}><Icon icon="mdi:pencil" width="15" height="15" /></button>{/if}
+                  {#if canDelete}<button class="danger act" title="Hapus menu" aria-label="Hapus" onclick={() => remove(m)}><Icon icon="mdi:trash-can-outline" width="15" height="15" /></button>{/if}
                 </td>
               </tr>
             {/each}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { get, post, patch } from '$lib/api';
+  import { get, post, patch, del } from '$lib/api';
   import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
   import { permissions } from '$lib/permissions';
@@ -26,9 +26,10 @@
   let form = $state({ name: '', email: '', password: '', role: 'cashier', status: 'active' });
   let saving = $state(false);
 
-  // Granular gates: user.view (page), user.create (+ Tambah), user.update (Edit).
+  // Granular gates: user.view (page), user.create (+ Tambah), user.update (Edit), user.delete (Deactivate).
   const canCreate = $derived($permissions.permissions.has('user.create'));
   const canUpdate = $derived($permissions.permissions.has('user.update'));
+  const canDelete = $derived($permissions.permissions.has('user.delete'));
 
   async function load() {
     loading = true;
@@ -84,6 +85,17 @@
       saving = false;
     }
   }
+
+  async function deactivate(u: UserRow) {
+    if (!confirm(`Nonaktifkan user ${u.name}? Sesi aktifnya akan dicabut.`)) return;
+    try {
+      await del(`/users/${u.id}`);
+      toastSuccess('User dinonaktifkan');
+      await load();
+    } catch (e) {
+      toastError((e as Error).message);
+    }
+  }
 </script>
 
 <div class="page">
@@ -107,7 +119,14 @@
               <td class="mono">{u.email}</td>
               <td><span class="badge {u.role === 'owner' ? 'green' : u.role === 'manager' ? 'amber' : 'gray'}">{u.role}</span></td>
               <td><span class="badge {u.status === 'active' ? 'green' : 'red'}">{u.status === 'active' ? 'Aktif' : 'Nonaktif'}</span></td>
-              <td>{#if canUpdate}<button class="act" title="Edit user" aria-label="Edit" onclick={() => openEdit(u)}><Icon icon="mdi:pencil" width="15" height="15" /></button>{/if}</td>
+              <td>
+                {#if canUpdate || (canDelete && u.role !== 'owner')}
+                  <span style="display:flex;gap:.4rem">
+                    {#if canUpdate}<button class="act" title="Edit user" aria-label="Edit" onclick={() => openEdit(u)}><Icon icon="mdi:pencil" width="15" height="15" /></button>{/if}
+                    {#if canDelete && u.role !== 'owner'}<button class="danger act" title="Nonaktifkan user" aria-label="Nonaktifkan" onclick={() => deactivate(u)}><Icon icon="mdi:cancel" width="15" height="15" /></button>{/if}
+                  </span>
+                {/if}
+              </td>
             </tr>
           {/each}
         </tbody>

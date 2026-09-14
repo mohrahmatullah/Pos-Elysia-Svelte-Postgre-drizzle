@@ -8,6 +8,7 @@
   import { get, post, put, patch, del } from '$lib/api';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
+  import { permissions } from '$lib/permissions';
   import { Icon, isIconifyName } from '$lib/icons';
 
   interface MenuRow {
@@ -155,7 +156,9 @@
   }
 
   const isOwner = $derived(selectedRoleName === 'owner');
-  const canEditPerms = $derived(!isOwner && !saving && !loadingPerms);
+  // The permission matrix is saved via PUT /permissions/role/:roleId, which the
+  // backend gates with user.manage — so editing must require exactly that.
+  const canEditPerms = $derived(!isOwner && !saving && !loadingPerms && $permissions.permissions.has('user.manage'));
   const dirty = $derived(
     selectedCodes.size !== initialCodes.size || [...selectedCodes].some((c) => !initialCodes.has(c)),
   );
@@ -320,9 +323,13 @@
     <div style="display:flex;gap:.5rem">
       {#if selectedRoleId && canEditPerms}
         <button onclick={save} disabled={!dirty}><Icon icon="mdi:content-save-outline" width="15" height="15" /> {saving ? 'Menyimpan…' : 'Simpan Permission'}</button>
+      {/if}
+      {#if selectedRoleId && $permissions.permissions.has('role.delete')}
         <button class="danger" onclick={deleteRole}><Icon icon="mdi:trash-can-outline" width="15" height="15" /> Hapus Role</button>
       {/if}
-      <button class="primary" onclick={() => (showCreate = true)}><Icon icon="mdi:plus" width="16" height="16" /> Role Baru</button>
+      {#if $permissions.permissions.has('role.create')}
+        <button class="primary" onclick={() => (showCreate = true)}><Icon icon="mdi:plus" width="16" height="16" /> Role Baru</button>
+      {/if}
     </div>
   </div>
 
@@ -345,7 +352,7 @@
               <span class="muted small">{role.permissions_count ?? 0} perm · {role.users_count ?? 0} user</span>
               {#if role.id === selectedRoleId && dirty}<span class="dirty-dot">•</span>{/if}
             </button>
-            {#if role.name !== 'owner'}
+            {#if role.name !== 'owner' && $permissions.permissions.has('role.update')}
               <button class="icon" title="Rename role" aria-label="Rename role" onclick={() => openRename(role)}><Icon icon="mdi:pencil" width="15" height="15" /></button>
             {/if}
           </div>
@@ -371,7 +378,7 @@
               {selectedCodes.size} dari {resourceOrder.reduce((n, r) => n + (resources[r]?.length ?? 0), 0)} permission aktif
             </p>
           </div>
-          {#if !isOwner}
+          {#if !isOwner && ($permissions.permissions.has('role.update'))}
             <button onclick={() => openRename({ id: selectedRoleId!, name: selectedRoleName })}>Rename</button>
           {/if}
         </div>        {#if isOwner}

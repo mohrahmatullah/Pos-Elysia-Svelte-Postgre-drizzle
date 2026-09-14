@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { get, post, patch, formatIDR, formatDateTime } from '$lib/api';
+  import { get, post, patch, del, formatIDR, formatDateTime } from '$lib/api';
   import SkeletonTable from '$lib/components/SkeletonTable.svelte';
   import { toastSuccess, toastError } from '$lib/stores/toast';
   import { Icon } from '$lib/icons';
@@ -31,6 +31,7 @@
 
   const canCreate = $derived($permissions.permissions.has('customer.create'));
   const canUpdate = $derived($permissions.permissions.has('customer.update'));
+  const canDelete = $derived($permissions.permissions.has('customer.delete'));
 
   async function load() {
     loading = true;
@@ -86,6 +87,17 @@
       toastError((e as Error).message);
     }
   }
+
+  async function remove(c: Customer) {
+    if (!confirm(`Hapus pelanggan ${c.name}? Pelanggan dengan riwayat transaksi tidak dapat dihapus.`)) return;
+    try {
+      await del(`/customers/${c.id}`);
+      toastSuccess('Pelanggan dihapus');
+      await load();
+    } catch (e) {
+      toastError((e as Error).message);
+    }
+  }
 </script>
 
 <div class="page">
@@ -116,6 +128,7 @@
               <td><button class="link" onclick={() => viewHistory(c)}>Riwayat</button></td>
               <td style="display:flex;gap:.4rem">
                 {#if canUpdate}<button class="act" title="Edit pelanggan" aria-label="Edit" onclick={() => openEdit(c)}><Icon icon="mdi:pencil" width="15" height="15" /></button>{/if}
+                {#if canDelete}<button class="danger act" title="Hapus pelanggan" aria-label="Hapus" onclick={() => remove(c)}><Icon icon="mdi:trash-can-outline" width="15" height="15" /></button>{/if}
               </td>
             </tr>
           {:else}

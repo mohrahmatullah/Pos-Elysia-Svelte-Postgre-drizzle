@@ -179,6 +179,7 @@ async function main() {
   // Group: Master Data
   const masterId = await ensureGroup('Master Data', 'mdi:database-outline', 20);
   await ensureItem({ label: 'Products', href: '/products', icon: 'mdi:package-variant-closed', permission_code: 'product.view', parent_id: masterId, sort_order: 21 });
+  await ensureItem({ label: 'Categories', href: '/categories', icon: 'mdi:tag-multiple-outline', permission_code: 'category.view', parent_id: masterId, sort_order: 24 });
   await ensureItem({ label: 'Inventory', href: '/inventory', icon: 'mdi:warehouse', permission_code: 'inventory.view', parent_id: masterId, sort_order: 22 });
   await ensureItem({ label: 'Customers', href: '/customers', icon: 'mdi:account-group-outline', permission_code: 'customer.view', parent_id: masterId, sort_order: 23 });
 
@@ -199,9 +200,6 @@ async function main() {
   await ensureItem({ label: 'Menus', href: '/menus', icon: 'mdi:compass-outline', permission_code: 'menu.view', parent_id: sysId, sort_order: 53 });
   await ensureItem({ label: 'Audit Log', href: '/audit', icon: 'mdi:text-box-search-outline', permission_code: 'audit.view', parent_id: sysId, sort_order: 54 });
   await ensureItem({ label: 'Store Settings', href: '/settings', icon: 'mdi:cog-outline', permission_code: 'settings.manage', parent_id: sysId, sort_order: 55 });
-
-  // Cleanup: stray row from an earlier partial grouped seed (no /categories page exists)
-  await db.delete(s.menus).where(eq(s.menus.href, '/categories'));
 
   console.log('   Menus ensured (grouped: Master Data, Transaksi, Laporan, Sistem)');
 

@@ -124,6 +124,7 @@ export const ROLE_PERMISSION_CODES = [
   'user.view',
   'user.create',
   'user.update',
+  'user.delete',
   'user.manage',
   // roles (dynamic role CRUD)
   'role.create',
@@ -165,6 +166,7 @@ export const PERMISSION_LABEL: Record<PermissionCode, string> = {
   'user.view': 'View users',
   'user.create': 'Create users',
   'user.update': 'Update users',
+  'user.delete': 'Deactivate users',
   'user.manage': 'Manage users & assign role permissions',
   'role.create': 'Create roles',
   'role.update': 'Rename roles',

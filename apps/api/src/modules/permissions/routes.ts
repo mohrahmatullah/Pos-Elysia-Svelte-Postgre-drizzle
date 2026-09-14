@@ -136,7 +136,7 @@ export const permissionRoutes = new Elysia({ prefix: '/permissions' })
 
         // Validate all codes against the DB catalog (role_permissions has FK to permissions.code)
         const validCodes = await allPermissionCodes();
-        const invalid = body.codes.filter((c) => !validCodes.has(c));
+        const invalid = body.codes.filter((c: string) => !validCodes.has(c));
         if (invalid.length > 0) throw Errors.validation(`Permission tidak valid: ${invalid.join(', ')}`);
         const codes = [...new Set(body.codes)] as PermissionCode[];
 

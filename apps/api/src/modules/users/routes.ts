@@ -1,8 +1,8 @@
 /** User management (PRD 5.2) — owner only. */
 import Elysia, { t } from 'elysia';
-import { and, asc, eq, ilike, or } from 'drizzle-orm';
+import { and, asc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { db } from '../../db';
-import { roles, users } from '../../db/schema';
+import { roles, sessions as schemaSessions, users } from '../../db/schema';
 import { ok, handleRouteError, parsePagination, paginationMeta, countWhere } from '../../lib/response';
 import { auth, requirePerm } from '../../middleware/auth';
 import { hashPassword } from '../../lib/password';
@@ -137,4 +137,43 @@ export const userRoutes = new Elysia({ prefix: '/users' })
         password: t.Optional(t.String()),
       }),
     },
+  )
+  .delete(
+    '/:id',
+    async ({ params, user, request }) => {
+      try {
+        const auth = requirePerm(user, 'user.delete');
+        if (params.id === auth.userId) throw Errors.validation('Tidak bisa menonaktifkan akun sendiri');
+        // Soft-delete: set inactive + revoke sessions so tokens stop refreshing.
+        // Rows are kept to preserve sales history (cashier_id FK) and audit trail.
+        const [updated] = await db
+          .update(users)
+          .set({ status: 'inactive', updated_at: new Date() })
+          .where(and(eq(users.id, params.id), eq(users.store_id, auth.storeId)))
+          .returning(userSelect);
+        if (!updated) throw Errors.notFound('User tidak ditemukan');
+        if (updated.role === 'owner') {
+          // Owner accounts are the system anchor: block deactivation after the fact.
+          await db.update(users).set({ status: 'active', updated_at: new Date() }).where(eq(users.id, updated.id));
+          throw Errors.forbidden('User owner tidak dapat dinonaktifkan');
+        }
+        await db
+          .update(schemaSessions)
+          .set({ revoked_at: new Date() })
+          .where(and(eq(schemaSessions.user_id, updated.id), isNull(schemaSessions.revoked_at)));
+        await writeAudit({
+          storeId: auth.storeId,
+          userId: auth.userId,
+          action: 'DEACTIVATE_USER',
+          entityType: 'user',
+          entityId: updated.id,
+          metadata: { email: updated.email },
+          ip: request.headers.get('x-forwarded-for'),
+        });
+        return ok({ deactivated: true, id: updated.id });
+      } catch (e) {
+        return handleRouteError(e);
+      }
+    },
+    { params: t.Object({ id: t.String({ format: 'uuid' }) }) },
   );
