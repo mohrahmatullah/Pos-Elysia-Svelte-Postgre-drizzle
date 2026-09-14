@@ -18,6 +18,8 @@
     selling_price: string;
     minimum_stock: number;
     tax_rate: string;
+    discount_type: 'PERCENT' | 'NOMINAL';
+    discount_value: string;
     active: boolean;
     stock: number;
   }
@@ -37,6 +39,8 @@
     selling_price: number;
     minimum_stock: number;
     initial_stock: number;
+    discount_type: 'PERCENT' | 'NOMINAL';
+    discount_value: number;
     active: boolean;
   }
 
@@ -50,6 +54,8 @@
     selling_price: 0,
     minimum_stock: 0,
     initial_stock: 0,
+    discount_type: 'NOMINAL',
+    discount_value: 0,
     active: true,
   };
 
@@ -111,6 +117,8 @@
       selling_price: Number.parseFloat(p.selling_price),
       minimum_stock: p.minimum_stock,
       initial_stock: 0,
+      discount_type: p.discount_type ?? 'NOMINAL',
+      discount_value: Number.parseFloat(p.discount_value ?? '0'),
       active: p.active,
     };
     showModal = true;
@@ -128,6 +136,8 @@
         cost_price: form.cost_price,
         selling_price: form.selling_price,
         minimum_stock: form.minimum_stock,
+        discount_type: form.discount_type,
+        discount_value: form.discount_value || 0,
       };
       if (form.id) {
         await patch(`/products/${form.id}`, { ...payload, active: form.active });
@@ -195,7 +205,14 @@
               <td class="mono">{p.sku}</td>
               <td>{p.name}</td>
               <td class="muted">{p.category_name ?? '—'}</td>
-              <td>{formatIDR(p.selling_price)}</td>
+              <td>
+                {formatIDR(p.selling_price)}
+                {#if Number.parseFloat(p.discount_value) > 0}
+                  <span class="badge amber disc-badge" title="Diskon produk">
+                    -{p.discount_value}{p.discount_type === 'PERCENT' ? '%' : ''}
+                  </span>
+                {/if}
+              </td>
               <td><span class="badge {p.stock <= 0 ? 'red' : p.stock <= p.minimum_stock ? 'amber' : 'green'}">{p.stock}</span></td>
               <td><span class="badge {p.active ? 'green' : 'gray'}">{p.active ? 'Aktif' : 'Nonaktif'}</span></td>
               {#if canUpdate || canDelete}
@@ -256,7 +273,19 @@
           <label for="f-unit">Unit</label>
           <input id="f-unit" bind:value={form.unit} />
         </div>
+        <div>
+          <label for="f-dtype">Jenis Diskon Produk</label>
+          <select id="f-dtype" bind:value={form.discount_type}>
+            <option value="NOMINAL">Nominal (Rp)</option>
+            <option value="PERCENT">Persen (%)</option>
+          </select>
+        </div>
+        <div>
+          <label for="f-dval">Nilai Diskon {form.discount_type === 'PERCENT' ? '(%)' : '(Rp)'}</label>
+          <input id="f-dval" type="number" min="0" max={form.discount_type === 'PERCENT' ? 100 : undefined} bind:value={form.discount_value} />
+        </div>
       </div>
+      <p class="muted small">Diskon produk otomatis dipakai di POS setiap kali item ini dijual.</p>
       {#if !form.id}
         <label for="f-init">Stok Awal</label>
         <input id="f-init" type="number" min="0" bind:value={form.initial_stock} />
@@ -280,6 +309,8 @@
 <style>
   .toolbar input { max-width: 280px; }
   .toolbar select { max-width: 180px; }
+  .disc-badge { margin-left: 0.35rem; }
+  .small { font-size: 0.8rem; }
   .pager {
     display: flex;
     align-items: center;

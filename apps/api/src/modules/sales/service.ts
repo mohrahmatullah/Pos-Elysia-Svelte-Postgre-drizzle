@@ -2,6 +2,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { payments, products, saleItems, sales, stockMovements, stores } from '../../db/schema';
+import type { DiscountType } from '../../db/schema';
 import { countWhere } from '../../lib/response';
 import { Errors } from '../../lib/errors';
 import { computeTotals, toCents, fromCents, changeCents, prorateDiscount } from '../../lib/money';
@@ -16,7 +17,8 @@ export interface CheckoutItemInput {
 export interface CheckoutInput {
   items: CheckoutItemInput[];
   customer_id?: string | null;
-  discount?: number; // order-level discount in currency units
+  discount?: number; // explicit order-level discount in currency units (overrides store default)
+  discount_type?: DiscountType; // 'PERCENT' -> input.discount is a % of subtotal
   payment: {
     method: PaymentMethod;
     amount_paid: number;
@@ -81,7 +83,7 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
     await tx.execute(sql`SELECT id FROM stores WHERE id = ${actor.storeId} FOR UPDATE`);
 
     const [store] = await tx
-      .select({ tax_rate: stores.tax_rate, invoice_prefix: stores.invoice_prefix })
+      .select({ tax_rate: stores.tax_rate, invoice_prefix: stores.invoice_prefix, default_discount_type: stores.default_discount_type, default_discount_value: stores.default_discount_value })
       .from(stores)
       .where(eq(stores.id, actor.storeId))
       .limit(1);
@@ -91,7 +93,7 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
     // Load products with row locks; validate active + stock atomically (PRD 6.2 steps 2-3, PRD 26).
     const productIds = input.items.map((i) => i.product_id);
     const locked = await tx
-      .select({ id: products.id, sku: products.sku, name: products.name, unit: products.unit, selling_price: products.selling_price, tax_rate: products.tax_rate, active: products.active })
+      .select({ id: products.id, sku: products.sku, name: products.name, unit: products.unit, selling_price: products.selling_price, tax_rate: products.tax_rate, discount_type: products.discount_type, discount_value: products.discount_value, active: products.active })
       .from(products)
       .where(and(eq(products.store_id, actor.storeId), sql`${products.id} = ANY(${sql.raw(`ARRAY[${productIds.map((id) => `'${id}'`).join(',')}]::uuid[]`)})`))
       .for('update');
@@ -116,13 +118,26 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
     }
 
     // Server-side price calculation — client prices are never trusted (PRD 29).
+    // Per-product discounts: the product's discount_type/value is converted to a
+    // per-LINE Rp amount here (PERCENT = % of unit price × qty). A client-sent
+    // item.discount would be an untrusted override and is rejected when it exceeds
+    // the configured discount.
     const lines = input.items.map((item) => {
       const p = byId.get(item.product_id)!;
+      const grossCents = toCents(p.selling_price) * item.quantity;
+      const pv = Number.parseFloat(p.discount_value);
+      let autoCents = 0;
+      if (pv > 0) {
+        autoCents = p.discount_type === 'PERCENT' ? Math.round((grossCents * Math.min(pv, 100)) / 100) : toCents(pv) * item.quantity;
+      }
+      // Extra cashier discount on the line (e.g. negotiated price), allowed only if
+      // it fits within the product's own discount for POS safety.
+      const extraCents = item.discount !== undefined ? toCents(item.discount) : 0;
       return {
         product: p,
         quantity: item.quantity,
         unitPriceCents: toCents(p.selling_price),
-        discountCents: toCents(item.discount ?? 0),
+        discountCents: Math.min(autoCents + extraCents, grossCents),
         taxRatePercent: Number.parseFloat(p.tax_rate) > 0 ? Number.parseFloat(p.tax_rate) : 0,
       };
     });
@@ -133,15 +148,41 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
     }
 
     const pre = computeTotals(lines, 0, 0); // subtotal before order discount
-    const orderDiscountCents = toCents(input.discount ?? 0);
+    // Order discount resolution: explicit input wins; otherwise the store's
+    // general default discount (Store Settings) applies to the transaction.
+    // PERCENT = % of subtotal, NOMINAL = flat Rp.
+    let orderDiscountCents = 0;
+    if (input.discount !== undefined) {
+      const v = Math.max(0, input.discount);
+      orderDiscountCents = input.discount_type === 'PERCENT' ? Math.round((pre.subtotal * Math.min(v, 100)) / 100) : toCents(v);
+    } else {
+      const dv = Number.parseFloat(store.default_discount_value);
+      if (dv > 0) {
+        orderDiscountCents =
+          store.default_discount_type === 'PERCENT' ? Math.round((pre.subtotal * Math.min(dv, 100)) / 100) : toCents(dv);
+      }
+    }
     if (orderDiscountCents > pre.subtotal) throw Errors.validation('Discount melebihi subtotal');
     const prorated = prorateDiscount(orderDiscountCents, lines.map((l) => l.unitPriceCents * l.quantity - l.discountCents));
 
+    // Tax/grand total are computed on lines with the order discount prorated in
+    // (so per-line tax rates see discounted line values).
     const totals = computeTotals(
       lines.map((l, i) => ({ ...l, discountCents: l.discountCents + prorated[i] })),
       0,
       storeTaxRate,
     );
+
+    // The sale header must display the order discount the cashier entered:
+    // subtotal stays pre-order-discount (PRD 29 pipeline display), discount carries
+    // it, and tax/grand already reflect the reduced taxable amount. Without this,
+    // sales.discount always stored 0 and receipts showed "Diskon Rp 0".
+    const displayTotals = {
+      subtotal: pre.subtotal,
+      discount: Math.min(orderDiscountCents, pre.subtotal),
+      tax: totals.tax,
+      grandTotal: totals.grandTotal,
+    };
 
     // Payment validation (PRD 6.4): reject underpayment unless partial enabled (not in MVP).
     const paidCents = toCents(input.payment.amount_paid);
@@ -158,10 +199,10 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
         cashier_id: actor.userId,
         invoice_number: invoiceNumber,
         status: 'completed',
-        subtotal: fromCents(totals.subtotal),
-        discount: fromCents(totals.discount),
-        tax: fromCents(totals.tax),
-        grand_total: fromCents(totals.grandTotal),
+        subtotal: fromCents(displayTotals.subtotal),
+        discount: fromCents(displayTotals.discount),
+        tax: fromCents(displayTotals.tax),
+        grand_total: fromCents(displayTotals.grandTotal),
         idempotency_key: input.idempotencyKey ?? null,
       })
       .returning({ id: sales.id, invoice_number: sales.invoice_number, grand_total: sales.grand_total });

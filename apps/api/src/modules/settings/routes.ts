@@ -31,6 +31,9 @@ export const settingsRoutes = new Elysia({ prefix: '/settings' })
           if (body[key] !== undefined) patch[key] = body[key];
         }
         if (body.tax_rate !== undefined) patch.tax_rate = String(body.tax_rate);
+        // General (store-wide default) discount applied to new POS transactions.
+        if (body.default_discount_type !== undefined) patch.default_discount_type = body.default_discount_type;
+        if (body.default_discount_value !== undefined) patch.default_discount_value = String(body.default_discount_value);
         const [updated] = await db.update(stores).set(patch).where(eq(stores.id, auth.storeId)).returning();
         await writeAudit({
           storeId: auth.storeId,
@@ -56,6 +59,8 @@ export const settingsRoutes = new Elysia({ prefix: '/settings' })
         currency: t.Optional(t.String()),
         timezone: t.Optional(t.String()),
         tax_rate: t.Optional(t.Number({ minimum: 0, maximum: 100 })),
+        default_discount_type: t.Optional(t.Union([t.Literal('PERCENT'), t.Literal('NOMINAL')])),
+        default_discount_value: t.Optional(t.Number({ minimum: 0 })),
       }),
     },
   );

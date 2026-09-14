@@ -27,6 +27,8 @@ const productSelect = {
   selling_price: products.selling_price,
   minimum_stock: products.minimum_stock,
   tax_rate: products.tax_rate,
+  discount_type: products.discount_type,
+  discount_value: products.discount_value,
   active: products.active,
   created_at: products.created_at,
   stock: stockExpr,
@@ -116,6 +118,8 @@ export const productRoutes = new Elysia({ prefix: '/products' })
             selling_price: String(body.selling_price ?? 0),
             minimum_stock: body.minimum_stock ?? 0,
             tax_rate: String(body.tax_rate ?? 0),
+            discount_type: body.discount_type ?? 'NOMINAL',
+            discount_value: String(body.discount_value ?? 0),
             active: true,
           })
           .returning();
@@ -160,6 +164,8 @@ export const productRoutes = new Elysia({ prefix: '/products' })
         selling_price: t.Optional(t.Number({ minimum: 0 })),
         minimum_stock: t.Optional(t.Number({ minimum: 0 })),
         tax_rate: t.Optional(t.Number({ minimum: 0, maximum: 100 })),
+        discount_type: t.Optional(t.Union([t.Literal('PERCENT'), t.Literal('NOMINAL')])),
+        discount_value: t.Optional(t.Number({ minimum: 0 })),
         initial_stock: t.Optional(t.Number({ minimum: 0 })),
       }),
     },
@@ -179,6 +185,8 @@ export const productRoutes = new Elysia({ prefix: '/products' })
         if (body.selling_price !== undefined) patch.selling_price = String(body.selling_price);
         if (body.minimum_stock !== undefined) patch.minimum_stock = body.minimum_stock;
         if (body.tax_rate !== undefined) patch.tax_rate = String(body.tax_rate);
+        if (body.discount_type !== undefined) patch.discount_type = body.discount_type;
+        if (body.discount_value !== undefined) patch.discount_value = String(body.discount_value);
         if (body.active !== undefined) patch.active = body.active;
         const [updated] = await db
           .update(products)
@@ -212,6 +220,8 @@ export const productRoutes = new Elysia({ prefix: '/products' })
         selling_price: t.Optional(t.Number({ minimum: 0 })),
         minimum_stock: t.Optional(t.Number({ minimum: 0 })),
         tax_rate: t.Optional(t.Number({ minimum: 0, maximum: 100 })),
+        discount_type: t.Optional(t.Union([t.Literal('PERCENT'), t.Literal('NOMINAL')])),
+        discount_value: t.Optional(t.Number({ minimum: 0 })),
         active: t.Optional(t.Boolean()),
       }),
     },

@@ -72,6 +72,7 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
           items: body.items,
           customer_id: body.customer_id ?? null,
           discount: body.discount,
+          discount_type: body.discount_type,
           payment: { method: body.method, amount_paid: body.amount_paid, reference_number: body.reference_number },
           idempotencyKey,
         };
@@ -108,6 +109,7 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
         ),
         customer_id: t.Optional(t.Nullable(t.String())),
         discount: t.Optional(t.Number({ minimum: 0 })),
+        discount_type: t.Optional(t.Union([t.Literal('PERCENT'), t.Literal('NOMINAL')])),
         method: t.Union([t.Literal('CASH'), t.Literal('TRANSFER'), t.Literal('CARD'), t.Literal('QRIS')]),
         amount_paid: t.Number({ minimum: 0 }),
         reference_number: t.Optional(t.String()),

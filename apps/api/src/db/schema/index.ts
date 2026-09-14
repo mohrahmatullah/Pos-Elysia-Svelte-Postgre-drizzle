@@ -21,6 +21,12 @@ import {
  * 'owner' keeps a special meaning (seeded full permissions, cannot be deleted/edited in UI).
  */
 export const PROTECTED_ROLE = 'owner';
+
+/** Discount modes: PERCENT applies discount_value as % of the base amount,
+ * NOMINAL applies it as a flat Rp amount. Used by per-product discounts and the
+ * store-level default discount (Store Settings). */
+export const discountTypeEnum = pgEnum('discount_type', ['PERCENT', 'NOMINAL']);
+export type DiscountType = (typeof discountTypeEnum.enumValues)[number];
 export const userStatusEnum = pgEnum('user_status', ['active', 'inactive']);
 export const saleStatusEnum = pgEnum('sale_status', [
   'completed',
@@ -190,6 +196,9 @@ export const stores = pgTable('stores', {
   receipt_footer: text('receipt_footer'),
   invoice_prefix: text('invoice_prefix').notNull().default('INV'),
   tax_rate: numeric('tax_rate', { precision: 5, scale: 2 }).notNull().default('0'),
+  // Store-level default discount applied to new POS transactions (general discount).
+  default_discount_type: discountTypeEnum('default_discount_type').notNull().default('NOMINAL'),
+  default_discount_value: numeric('default_discount_value', { precision: 18, scale: 2 }).notNull().default('0'),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -321,6 +330,9 @@ export const products = pgTable(
     selling_price: numeric('selling_price', { precision: 18, scale: 2 }).notNull().default('0'),
     minimum_stock: integer('minimum_stock').notNull().default(0),
     tax_rate: numeric('tax_rate', { precision: 5, scale: 2 }).notNull().default('0'),
+    // Per-product discount (PERCENT = % of line subtotal, NOMINAL = flat Rp per line).
+    discount_type: discountTypeEnum('discount_type').notNull().default('NOMINAL'),
+    discount_value: numeric('discount_value', { precision: 18, scale: 2 }).notNull().default('0'),
     active: boolean('active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,7 +1,17 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get, post, formatIDR } from '$lib/api';
-  import { cart, totals, orderDiscount, addToCart, setQuantity, removeLine, clearCart } from '$lib/stores/cart';
+  import {
+    cart,
+    totals,
+    orderDiscount,
+    orderDiscountType,
+    orderDiscountPercent,
+    addToCart,
+    setQuantity,
+    removeLine,
+    clearCart,
+  } from '$lib/stores/cart';
   import { toastSuccess, toastError } from '$lib/stores/toast';
   import { Icon } from '$lib/icons';
 
@@ -13,18 +23,38 @@
     selling_price: string;
     unit: string;
     stock: number;
+    category_id: string | null;
+    category_name: string | null;
+    discount_type: 'PERCENT' | 'NOMINAL';
+    discount_value: string;
   }
   interface Customer {
     id: string;
     name: string;
   }
+  interface Category {
+    id: string;
+    name: string;
+  }
+  interface StoreCfg {
+    default_discount_type: 'PERCENT' | 'NOMINAL';
+    default_discount_value: string;
+  }
 
   let products = $state<Product[]>([]);
   let customers = $state<Customer[]>([]);
+  let categories = $state<Category[]>([]);
   let search = $state('');
+  let selectedCategory = $state(''); // '' = semua kategori
   let searchInput = $state<HTMLInputElement | null>(null);
   let selectedCustomer = $state<string | null>(null);
-  let discountInput = $state(0);
+
+  // Order discount: two kinds — PERCENT (% of subtotal) or NOMINAL (flat Rp).
+  // State lives in the cart store; the general default comes from Store Settings
+  // and pre-fills it (cashier can still change or clear it).
+  let discountType = orderDiscountType;
+  let discountPercent = orderDiscountPercent;
+  const effectiveDiscountRp = $derived($totals.discount);
 
   // Payment modal
   let showPayment = $state(false);
@@ -48,7 +78,8 @@
 
   const filtered = $derived.by(() => {
     const q = search.trim().toLowerCase();
-    const active = products.filter((p) => p.stock > 0);
+    let active = products.filter((p) => p.stock > 0);
+    if (selectedCategory) active = active.filter((p) => p.category_id === selectedCategory);
     if (!q) return active.slice(0, 24);
     return active
       .filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.barcode ?? '').includes(q))
@@ -59,9 +90,23 @@
 
   onMount(async () => {
     try {
-      const [p, c] = await Promise.all([get<Product[]>('/products?active=true&limit=100'), get<Customer[]>('/customers?limit=100')]);
+      const [p, c, cats, cfg] = await Promise.all([
+        get<Product[]>('/products?active=true&limit=100'),
+        get<Customer[]>('/customers?limit=100'),
+        get<Category[]>('/categories?active=true&limit=100'),
+        get<StoreCfg>('/settings'),
+      ]);
       products = p.data;
       customers = c.data;
+      categories = cats.data;
+      // General discount (Store Settings) pre-fills the order discount for the
+      // transaction; the cashier can still change or clear it.
+      const dv = Number.parseFloat(cfg.data.default_discount_value ?? '0') || 0;
+      if (dv > 0) {
+        orderDiscountType.set(cfg.data.default_discount_type);
+        if (cfg.data.default_discount_type === 'PERCENT') orderDiscountPercent.set(dv);
+        else orderDiscount.set(dv);
+      }
     } catch (e) {
       toastError((e as Error).message);
     }
@@ -90,19 +135,21 @@
     if (processing) return; // double-submission guard (PRD 23)
     processing = true;
     try {
+      const discRp = $totals.discount;
       const body = {
-        items: $cart.map((l) => ({ product_id: l.product_id, quantity: l.quantity, discount: l.discount || undefined })),
+        items: $cart.map((l) => ({ product_id: l.product_id, quantity: l.quantity })),
         customer_id: selectedCustomer,
-        discount: discountInput || undefined,
+        discount: discRp > 0 ? ($discountType === 'PERCENT' ? $discountPercent : discRp) : undefined,
+        discount_type: $discountType,
         method: payMethod,
         amount_paid: amountPaid,
         reference_number: referenceNumber || undefined,
-      };
+      }
       const { data } = await post<ReceiptSale>('/sales', body, { idempotencyKey: crypto.randomUUID() });
       receipt = data;
       showPayment = false;
       clearCart();
-      discountInput = 0;
+      orderDiscountType.set('NOMINAL');
       selectedCustomer = null;
       // refresh stock display
       const p = await get<Product[]>('/products?active=true&limit=100');
@@ -135,6 +182,12 @@
       placeholder="Cari produk / scan barcode… (F2)"
       autofocus
     />
+    <select class="cat-filter" bind:value={selectedCategory} title="Filter kategori">
+      <option value="">Semua kategori</option>
+      {#each categories as c (c.id)}
+        <option value={c.id}>{c.name}</option>
+      {/each}
+    </select>
     <span class="muted hint">F2 cari · F8 bayar · ESC tutup</span>
   </div>
 
@@ -149,6 +202,9 @@
               <div class="name">{p.name}</div>
               <div class="muted mono sku">{p.sku}</div>
               <div class="price">{formatIDR(p.selling_price)}</div>
+              {#if Number.parseFloat(p.discount_value) > 0}
+                <div class="small prod-disc">Diskon {p.discount_value}{p.discount_type === 'PERCENT' ? '%' : ''}</div>
+              {/if}
               <div class="muted small">Stok: {p.stock}</div>
             </button>
           {/each}
@@ -165,7 +221,12 @@
           {#each $cart as line (line.product_id)}
             <div class="line">
               <div class="info">
-                <div>{line.name}</div>
+                <div>
+                  {line.name}
+                  {#if line.discount > 0}
+                    <span class="muted small">(-{line.discount_value}{line.discount_type === 'PERCENT' ? '%' : ''})</span>
+                  {/if}
+                </div>
                 <div class="muted small">{formatIDR(line.price)} × {line.quantity}</div>
               </div>
               <div class="qty">
@@ -173,7 +234,10 @@
                 <span>{line.quantity}</span>
                 <button onclick={() => setQuantity(line.product_id, line.quantity + 1)}>+</button>
               </div>
-              <div class="sum">{formatIDR(line.price * line.quantity - line.discount)}</div>
+              <div class="sum">
+                {formatIDR(line.price * line.quantity - line.discount)}
+                {#if line.discount > 0}<div class="muted small strike">{formatIDR(line.price * line.quantity)}</div>{/if}
+              </div>
               <button class="danger x" title="Hapus item" aria-label="Hapus item" onclick={() => removeLine(line.product_id)}><Icon icon="mdi:close" width="15" height="15" /></button>
             </div>
           {/each}
@@ -192,8 +256,21 @@
           <div class="row"><span>Subtotal</span><span>{formatIDR($totals.subtotal)}</span></div>
           <div class="row discount">
             <span>Diskon</span>
-            <input type="number" min="0" bind:value={discountInput} />
+            <span class="disc-inputs">
+              <select bind:value={$discountType} title="Jenis diskon">
+                <option value="NOMINAL">Rp</option>
+                <option value="PERCENT">%</option>
+              </select>
+              {#if $discountType === 'NOMINAL'}
+                <input type="number" min="0" max={$totals.subtotal} bind:value={$orderDiscount} placeholder="0" />
+              {:else}
+                <input type="number" min="0" max="100" bind:value={$discountPercent} placeholder="0" />
+              {/if}
+            </span>
           </div>
+          {#if effectiveDiscountRp > 0}
+            <div class="row muted small"><span>Diskon umum/produk diterapkan</span><span>−{formatIDR(effectiveDiscountRp)}</span></div>
+          {/if}
           <div class="row"><span>Pajak (11%)</span><span>{formatIDR($totals.tax)}</span></div>
           <div class="row grand"><span>Total</span><span>{formatIDR($totals.grandTotal)}</span></div>
         </div>
@@ -291,6 +368,33 @@
     font-size: 0.75rem;
     white-space: nowrap;
   }
+  .cat-filter {
+    width: auto;
+    min-width: 160px;
+    max-width: 220px;
+  }
+  .prod-disc {
+    color: var(--amber);
+    font-weight: 600;
+  }
+  .disc-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .disc-inputs select {
+    width: 72px;
+    padding: 0.2rem 0.3rem;
+  }
+  .disc-inputs input {
+    width: 90px;
+    text-align: right;
+    padding: 0.2rem 0.4rem;
+  }
+  .strike {
+    text-decoration: line-through;
+    text-align: right;
+  }
   .content {
     display: grid;
     grid-template-columns: 1fr 360px;
@@ -378,6 +482,9 @@
     width: 110px;
     text-align: right;
     padding: 0.2rem 0.4rem;
+  }
+  .totals .small {
+    font-size: 0.75rem;
   }
   .grand {
     font-weight: 700;

@@ -13,6 +13,8 @@
     receipt_footer: string | null;
     invoice_prefix: string;
     tax_rate: string;
+    default_discount_type: 'PERCENT' | 'NOMINAL';
+    default_discount_value: string;
   }
 
   let form = $state<StoreSettings | null>(null);
@@ -39,6 +41,8 @@
         receipt_footer: form.receipt_footer,
         invoice_prefix: form.invoice_prefix,
         tax_rate: Number.parseFloat(form.tax_rate),
+        default_discount_type: form.default_discount_type,
+        default_discount_value: Number.parseFloat(form.default_discount_value) || 0,
       })).data;
       toastSuccess('Pengaturan tersimpan');
     } catch (e) {
@@ -79,7 +83,29 @@
           <label for="s-tax">Tax Rate (%)</label>
           <input id="s-tax" type="number" min="0" max="100" step="0.01" bind:value={form.tax_rate} />
         </div>
+        <div>
+          <label for="s-dtype">Diskon Umum — Jenis</label>
+          <select id="s-dtype" bind:value={form.default_discount_type}>
+            <option value="NOMINAL">Nominal (Rp)</option>
+            <option value="PERCENT">Persen (%)</option>
+          </select>
+        </div>
+        <div>
+          <label for="s-dval">Diskon Umum — Nilai {form.default_discount_type === 'PERCENT' ? '(%)' : '(Rp)'}</label>
+          <input
+            id="s-dval"
+            type="number"
+            min="0"
+            max={form.default_discount_type === 'PERCENT' ? 100 : undefined}
+            step="0.01"
+            bind:value={form.default_discount_value}
+          />
+        </div>
       </div>
+      <p class="muted small">
+        Diskon umum otomatis dipakai di POS untuk setiap transaksi baru (kasir masih bisa mengubahnya).
+        Nilai 0 = tidak ada diskon umum.
+      </p>
       <label for="s-footer">Footer Receipt</label>
       <textarea id="s-footer" rows="2" bind:value={form.receipt_footer}></textarea>
       <div style="margin-top:1rem;display:flex;justify-content:flex-end">
@@ -92,3 +118,10 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .small {
+    font-size: 0.8rem;
+    margin: 0.4rem 0 0;
+  }
+</style>
