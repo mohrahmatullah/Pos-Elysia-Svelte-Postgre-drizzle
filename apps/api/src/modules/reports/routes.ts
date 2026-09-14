@@ -1,7 +1,7 @@
 /** Reports + dashboard (PRD 9, 10). */
 import Elysia, { t } from 'elysia';
 import { and, eq, gte, lte, sql, desc, asc, type SQL } from 'drizzle-orm';import { db } from '../../db';
-import { payments, products, saleItems, sales, stockMovements, users } from '../../db/schema';
+import { payments, products, saleItems, sales, stockMovements, stores, users } from '../../db/schema';
 import { ok, handleRouteError } from '../../lib/response';
 import { auth, requirePerm } from '../../middleware/auth';
 
@@ -18,6 +18,13 @@ function completedSale(conditions: SQL[]) {
   return and(eq(sales.status, 'completed'), ...conditions) as SQL;
 }
 
+/** Store scoping: every report/dashboard query is scoped to the session's ACTIVE
+ * store — for everyone, owner included. The owner's cross-store overview lives in
+ * the dashboard's per-store breakdown (store.switch), not in mixed-in aggregates. */
+function storeScope(auth: { storeId: string }): SQL[] {
+  return [eq(sales.store_id, auth.storeId)];
+}
+
 export const reportRoutes = new Elysia({ prefix: '/reports' })
   .use(auth)
   // 10.1 Sales report
@@ -26,7 +33,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     async ({ query, user }) => {
       try {
         const auth = requirePerm(user, 'report.view');
-        const conds = dateRange(query.from, query.to);
+        const conds = [...dateRange(query.from, query.to), ...storeScope(auth)];
         if (query.cashier_id) conds.push(eq(sales.cashier_id, query.cashier_id));
         const where = completedSale(conds);
         const [totals] = await db
@@ -58,7 +65,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     async ({ query, user }) => {
       try {
         const auth = requirePerm(user, 'report.view');
-        const conds = dateRange(query.from, query.to);
+        const conds = [...dateRange(query.from, query.to), ...storeScope(auth)];
         const where = completedSale(conds);
         const rows = await db
           .select({
@@ -89,7 +96,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     async ({ query, user }) => {
       try {
         const auth = requirePerm(user, 'report.view');
-        const conds = dateRange(query.from, query.to);
+        const conds = [...dateRange(query.from, query.to), ...storeScope(auth)];
         const rows = await db
           .select({
             method: payments.method,
@@ -145,7 +152,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     async ({ query, user }) => {
       try {
         const auth = requirePerm(user, 'report.view');
-        const conds = dateRange(query.from, query.to);
+        const conds = [...dateRange(query.from, query.to), ...storeScope(auth)];
         const rows = await db
           .select({
             cashier_id: sales.cashier_id,
@@ -172,7 +179,8 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
     async ({ query, user }) => {
       try {
         const auth = requirePerm(user, 'dashboard.view');
-        const conds = dateRange(query.from, query.to);
+        const isMultiStore = auth.permissions.has('store.switch');
+        const conds = [...dateRange(query.from, query.to), ...storeScope(auth)];
         const where = completedSale(conds);
         const [totals] = await db
           .select({
@@ -212,7 +220,7 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
           .orderBy(desc(sql`SUM(${saleItems.quantity})`))
           .limit(5);
 
-        // Sales trend (last 14 days, daily)
+        // Sales trend (last 14 days, daily) — same scope as summary
         const trend = await db
           .select({
             date: sql<string>`TO_CHAR(${sales.created_at} AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD')`,
@@ -220,16 +228,37 @@ export const reportRoutes = new Elysia({ prefix: '/reports' })
             transactions: sql<number>`COUNT(*)`,
           })
           .from(sales)
-          .where(and(eq(sales.store_id, auth.storeId), eq(sales.status, 'completed')))
+          .where(where)
           .groupBy(sql`TO_CHAR(${sales.created_at} AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD')`)
           .orderBy(sql`TO_CHAR(${sales.created_at} AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') DESC`)
           .limit(14);
+
+        // Owner-only: transactions per store (multi-store overview).
+        // LEFT JOIN so stores with zero sales in the range still appear (with 0).
+        let perStore: { store_id: string; store_name: string; transactions: number; total: string }[] = [];
+        if (isMultiStore) {
+          const saleConds = completedSale(dateRange(query.from, query.to));
+          perStore = await db
+            .select({
+              store_id: stores.id,
+              store_name: stores.name,
+              transactions: sql<number>`COUNT(${sales.id})::int`,
+              total: sql<string>`COALESCE(SUM(${sales.grand_total}), 0)`,
+            })
+            .from(stores)
+            .leftJoin(sales, and(eq(sales.store_id, stores.id), saleConds))
+            .where(eq(stores.active, true))
+            .groupBy(stores.id, stores.name)
+            .orderBy(desc(sql`COALESCE(SUM(${sales.grand_total}), 0)`));
+        }
 
         return ok({
           summary: totals,
           low_stock: lowStock,
           top_products: topProducts,
           trend: trend.reverse(),
+          // Only present for roles with store.switch (owner): per-store breakdown.
+          ...(isMultiStore ? { per_store: perStore } : {}),
         });
       } catch (e) {
         return handleRouteError(e);

@@ -1,8 +1,8 @@
-/** Auth routes (PRD 18): login, logout, refresh, me. Rate limited (PRD 25). */
+/** Auth routes (PRD 18): login, logout, refresh, me, switch-store. Rate limited (PRD 25). */
 import Elysia, { t } from 'elysia';
-import { login, logout, refresh } from './service';
+import { login, logout, refresh, switchStore } from './service';
 import { ok, handleRouteError } from '../../lib/response';
-import { auth, requireUser, loadPermissionsForRole } from '../../middleware/auth';
+import { auth, requireUser, requirePerm, loadPermissionsForRole, loadUserStores } from '../../middleware/auth';
 import { writeAudit } from '../../lib/audit';
 
 /** Simple in-memory rate limiter for auth endpoints (PRD 25). */
@@ -92,11 +92,37 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['auth'] })
   .get('/me', async ({ user }) => {
     const auth = requireUser(user);
     const permissionSet = await loadPermissionsForRole(auth.roleId, auth.role);
+    const stores = await loadUserStores(auth.userId);
     return ok({
       user_id: auth.userId,
       store_id: auth.storeId,
       role: auth.role,
       session_id: auth.sessionId,
       permissions: [...permissionSet],
+      stores,
     });
-  });
+  })
+  .post(
+    '/switch-store',
+    async ({ body, user, request }) => {
+      try {
+        // Owner-only capability: switching stores is reserved for roles granted
+        // `store.switch` (owner by default — grant via Role & Permission to others).
+        const auth = requirePerm(user, 'store.switch');
+        const result = await switchStore(auth.sessionId, auth.userId, body.store_id);
+        await writeAudit({
+          storeId: result.store.id,
+          userId: auth.userId,
+          action: 'SWITCH_STORE',
+          entityType: 'store',
+          entityId: result.store.id,
+          metadata: { from_store_id: auth.storeId },
+          ip: request.headers.get('x-forwarded-for'),
+        });
+        return ok(result);
+      } catch (e) {
+        return handleRouteError(e);
+      }
+    },
+    { body: t.Object({ store_id: t.String({ format: 'uuid' }) }) },
+  );

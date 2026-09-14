@@ -20,6 +20,9 @@ export interface AccessPayload {
   /** Role UUID — lets the backend resolve the DB-backed permission set per request. */
   role_id: string;
   store_id: string;
+  /** Multi-store: the store the user is currently working in (must be one of their
+   * user_stores memberships). Defaults to store_id for tokens issued before this field. */
+  active_store_id?: string;
   exp: number;
   iat: number;
 }

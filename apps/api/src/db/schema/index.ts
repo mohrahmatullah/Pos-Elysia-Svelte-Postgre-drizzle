@@ -136,6 +136,12 @@ export const ROLE_PERMISSION_CODES = [
   'role.create',
   'role.update',
   'role.delete',
+  // stores (multi-store management — owner manages and switches between stores)
+  'store.view',
+  'store.create',
+  'store.update',
+  'store.delete',
+  'store.switch',
   // menus (dynamic sidebar administration)
   'menu.view',
   'menu.create',
@@ -177,6 +183,11 @@ export const PERMISSION_LABEL: Record<PermissionCode, string> = {
   'role.create': 'Create roles',
   'role.update': 'Rename roles',
   'role.delete': 'Delete roles',
+  'store.view': 'View stores',
+  'store.create': 'Create stores',
+  'store.update': 'Update stores',
+  'store.delete': 'Deactivate stores',
+  'store.switch': 'Switch active store (multi-store)',
   'menu.view': 'View menus',
   'menu.create': 'Create menus',
   'menu.update': 'Update menus',
@@ -199,9 +210,34 @@ export const stores = pgTable('stores', {
   // Store-level default discount applied to new POS transactions (general discount).
   default_discount_type: discountTypeEnum('default_discount_type').notNull().default('NOMINAL'),
   default_discount_value: numeric('default_discount_value', { precision: 18, scale: 2 }).notNull().default('0'),
+  /** Inactive stores are hidden from the switcher and reject new activity. */
+  active: boolean('active').notNull().default(true),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Multi-store membership: which stores a user may work in. The owner is granted
+ * every store (seeded + newly created) so they can manage/switch across all of them.
+ * A user's session carries an active_store_id (within their memberships); all
+ * store-scoped data is filtered by it. */
+export const userStores = pgTable(
+  'user_stores',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    user_id: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    store_id: uuid('store_id')
+      .notNull()
+      .references(() => stores.id, { onDelete: 'cascade' }),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('user_stores_user_store_uq').on(t.user_id, t.store_id),
+    index('user_stores_user_idx').on(t.user_id),
+    index('user_stores_store_idx').on(t.store_id),
+  ],
+);
 
 /* ---------------------------------- auth ---------------------------------- */
 
@@ -251,6 +287,10 @@ export const sessions = pgTable(
     refresh_token_hash: text('refresh_token_hash').notNull(),
     expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
     revoked_at: timestamp('revoked_at', { withTimezone: true }),
+    /** Multi-store: store the user switched into for this session (null = home store).
+     * Refreshed access tokens preserve the switch; membership is re-validated on every
+     * request by the auth middleware. */
+    active_store_id: uuid('active_store_id').references(() => stores.id, { onDelete: 'set null' }),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -505,6 +545,7 @@ export const auditLogs = pgTable(
 /* -------------------------------- inference ------------------------------- */
 
 export type Store = typeof stores.$inferSelect;
+export type UserStore = typeof userStores.$inferSelect;
 export type PermissionSelect = typeof permissions.$inferSelect;
 export type RolePermissionSelect = typeof rolePermissions.$inferSelect;
 export type RoleSettingSelect = typeof roleSettings.$inferSelect;

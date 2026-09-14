@@ -2,7 +2,7 @@
 import Elysia, { t } from 'elysia';
 import { and, asc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { db } from '../../db';
-import { roles, sessions as schemaSessions, users } from '../../db/schema';
+import { roles, sessions as schemaSessions, userStores, users } from '../../db/schema';
 import { ok, handleRouteError, parsePagination, paginationMeta, countWhere } from '../../lib/response';
 import { auth, requirePerm } from '../../middleware/auth';
 import { hashPassword } from '../../lib/password';
@@ -67,6 +67,12 @@ export const userRoutes = new Elysia({ prefix: '/users' })
             status: body.status ?? 'active',
           })
           .returning(userSelect);
+        // Multi-store: the new user becomes a member of the store they were
+        // created in (their home store) so the store switcher/badge works.
+        await db
+          .insert(userStores)
+          .values({ user_id: created.id, store_id: auth.storeId })
+          .onConflictDoNothing();
         await writeAudit({
           storeId: auth.storeId,
           userId: auth.userId,

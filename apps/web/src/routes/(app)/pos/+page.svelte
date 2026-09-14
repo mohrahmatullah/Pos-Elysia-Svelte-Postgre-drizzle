@@ -111,21 +111,23 @@
 
   onMount(async () => {
     try {
+      // Settings are optional (cashier has no settings.manage): the general-discount
+      // pre-fill simply doesn't happen when the fetch fails.
       const [p, c, cats, cfg] = await Promise.all([
         get<Product[]>('/products?active=true&limit=100'),
         get<Customer[]>('/customers?limit=100'),
         get<Category[]>('/categories?active=true&limit=100'),
-        get<StoreCfg>('/settings'),
+        get<StoreCfg>('/settings').catch(() => null),
       ]);
       products = p.data;
       customers = c.data;
       categories = cats.data;
       // General discount (Store Settings) pre-fills the order discount for the
       // transaction; the cashier can still change or clear it.
-      const dv = Number.parseFloat(cfg.data.default_discount_value ?? '0') || 0;
+      const dv = Number.parseFloat(cfg?.data.default_discount_value ?? '0') || 0;
       if (dv > 0) {
-        orderDiscountType.set(cfg.data.default_discount_type);
-        if (cfg.data.default_discount_type === 'PERCENT') orderDiscountPercent.set(dv);
+        orderDiscountType.set(cfg!.data.default_discount_type);
+        if (cfg!.data.default_discount_type === 'PERCENT') orderDiscountPercent.set(dv);
         else orderDiscount.set(dv);
       }
     } catch (e) {

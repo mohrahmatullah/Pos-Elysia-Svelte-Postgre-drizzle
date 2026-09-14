@@ -6,6 +6,7 @@
  */
 import { writable } from 'svelte/store';
 import { get, post } from '$lib/api';
+import { setStores, clearStores } from '$lib/stores/multiStore';
 
 export interface PermissionState {
   permissions: ReadonlySet<string>;
@@ -35,13 +36,21 @@ export function setPermissions(perms: string[], role: string): void {
 
 export function clearPermissions(): void {
   permissions.set({ permissions: EMPTY, role: '', loaded: false });
+  clearStores();
 }
 
 /** Refresh the store from the backend (GET /auth/me). */
 export async function loadPermissions(): Promise<void> {
   try {
-    const { data } = await get<{ role: string; permissions: string[] }>('/auth/me');
+    const { data } = await get<{ role: string; permissions: string[]; store_id?: string; stores?: { id: string; name: string; active: boolean }[] }>(
+      '/auth/me',
+    );
     setPermissions(data.permissions, data.role);
+    if (data.store_id) {
+      setStores(data.stores ?? [], data.store_id);
+    } else {
+      clearStores();
+    }
   } catch {
     // keep current state; backend stays the security boundary anyway
   }

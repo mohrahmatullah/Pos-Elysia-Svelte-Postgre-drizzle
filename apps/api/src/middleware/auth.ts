@@ -4,11 +4,13 @@
  * without role_id (until their access token expires).
  */
 import Elysia from 'elysia';
+import { and, eq } from 'drizzle-orm';
 import { verifyAccessToken, type AccessPayload } from '../lib/jwt';
 import { config } from '../config';
 import { Errors } from '../lib/errors';
 import { buildPermissionSet } from '../db/permission';
 import { ROLE_PERMISSIONS, type PermissionCode } from '../lib/permissions';
+import { db, schema } from '../db';
 
 export interface AuthUser {
   userId: string;
@@ -63,10 +65,28 @@ export const auth = new Elysia({ name: 'auth' }).derive({ as: 'global' }, async 
     ? await loadPermissionsForRole(payload.role_id, payload.role)
     : new Set(ROLE_PERMISSIONS[payload.role] ?? []);
 
+  // Multi-store: the effective store is the token's active store when it is still a
+  // valid membership; otherwise fall back to the user's home store. Keeps old tokens
+  // working and blocks switching to a store the user does not belong to.
+  let storeId = payload.store_id;
+  if (payload.active_store_id && payload.active_store_id !== payload.store_id) {
+    const [member] = await db
+      .select({ id: schema.userStores.id })
+      .from(schema.userStores)
+      .where(
+        and(
+          eq(schema.userStores.user_id, payload.sub),
+          eq(schema.userStores.store_id, payload.active_store_id),
+        ),
+      )
+      .limit(1);
+    if (member) storeId = payload.active_store_id;
+  }
+
   return {
     user: {
       userId: payload.sub,
-      storeId: payload.store_id,
+      storeId,
       role: payload.role,
       roleId: payload.role_id,
       sessionId: payload.sid,
@@ -92,3 +112,28 @@ export const hasRolePermission = (user: AuthUser | null, permission: PermissionC
   if (!user) return false;
   return user.permissions.has(permission);
 };
+
+/** Stores the user belongs to (for the switcher + login/me payload).
+ * Users without explicit memberships (e.g. created before multi-store, or via the
+ * Users UI) fall back to their home store so the store name always shows. */
+export async function loadUserStores(userId: string) {
+  const rows = await db
+    .select({
+      id: schema.stores.id,
+      name: schema.stores.name,
+      active: schema.stores.active,
+    })
+    .from(schema.userStores)
+    .innerJoin(schema.stores, eq(schema.userStores.store_id, schema.stores.id))
+    .where(eq(schema.userStores.user_id, userId))
+    .orderBy(schema.stores.name);
+  if (rows.length > 0) return rows;
+
+  const [home] = await db
+    .select({ id: schema.stores.id, name: schema.stores.name, active: schema.stores.active })
+    .from(schema.users)
+    .innerJoin(schema.stores, eq(schema.stores.id, schema.users.store_id))
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  return home ? [home] : [];
+}

@@ -14,6 +14,7 @@ import { auditRoutes } from './modules/audit/routes';
 import { permissionRoutes } from './modules/permissions/routes';
 import { roleRoutes } from './modules/roles/routes';
 import { menuRoutes } from './modules/menus/routes';
+import { storeRoutes } from './modules/stores/routes';
 import { auth as authPlugin } from './middleware/auth';
 import { requestLogger } from './lib/request-id';
 import { config } from './config';
@@ -33,7 +34,8 @@ const api = new Elysia({ prefix: '/api/v1' })
   .use(auditRoutes)
   .use(permissionRoutes)
   .use(roleRoutes)
-  .use(menuRoutes);
+  .use(menuRoutes)
+  .use(storeRoutes);
 
 export const app = new Elysia()
   .use(requestLogger)

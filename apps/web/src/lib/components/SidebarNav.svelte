@@ -3,9 +3,52 @@
   import { menuItems } from '$lib/menu';
   import { Icon, isIconifyName } from '$lib/icons';
   import { slide } from 'svelte/transition';
+  import { post, getUser } from '$lib/api';
+  import { userStores, currentStoreId } from '$lib/stores/multiStore';
+  import { permissions, loadPermissions } from '$lib/permissions';
+  import { toastSuccess, toastError } from '$lib/stores/toast';
 
   /** Called when a link is clicked (used to close the mobile drawer). */
   let { onNavigate }: { onNavigate?: () => void } = $props();
+
+  // ----- Multi-store switcher -----
+  // The dropdown needs BOTH membership (>1 store) and the `store.switch`
+  // permission (owner by default). Users with multiple memberships but no
+  // permission just see their current store as a badge.
+  let switching = $state(false);
+  const stores = $derived($userStores);
+  const activeId = $derived($currentStoreId);
+  const activeName = $derived(stores.find((s) => s.id === activeId)?.name ?? stores[0]?.name ?? '');
+  const canSwitch = $derived($permissions.permissions.has('store.switch'));
+
+  async function switchStore(storeId: string) {
+    if (switching || storeId === activeId) return;
+    switching = true;
+    try {
+      const { data } = await post<{ accessToken: string; store: { id: string; name: string } }>(
+        '/auth/switch-store',
+        { store_id: storeId },
+      );
+      // Persist the fresh access token (carries the new active store claim).
+      const current = getUser();
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('pos.auth') : null;
+      if (raw && current) {
+        const parsed = JSON.parse(raw) as { accessToken: string; refreshToken: string; user: typeof current };
+        parsed.accessToken = data.accessToken;
+        parsed.user = { ...parsed.user, storeId };
+        localStorage.setItem('pos.auth', JSON.stringify(parsed));
+      }
+      // Re-sync permissions (now scoped to the new store context) + reload data.
+      await loadPermissions();
+      toastSuccess(`Berpindah ke ${data.store.name}`);
+      // Full reload so every page refetches with the new store scope.
+      location.reload();
+    } catch (e) {
+      toastError((e as Error).message);
+    } finally {
+      switching = false;
+    }
+  }
 
   const nav = $derived($menuItems);
 
@@ -31,6 +74,32 @@
     </span>
     POS
   </div>
+
+  {#if stores.length > 1 && canSwitch}
+    <!-- Multi-store switcher: 2+ memberships AND store.switch permission -->
+    <div class="store-switcher" class:busy={switching}>
+      <label for="store-select">
+        <Icon icon="mdi:store-outline" width="14" height="14" />
+        Toko aktif
+      </label>
+      <select
+        id="store-select"
+        value={activeId}
+        disabled={switching}
+        onchange={(e) => switchStore((e.currentTarget as HTMLSelectElement).value)}
+      >
+        {#each stores as s (s.id)}
+          <option value={s.id} disabled={!s.active}>{s.name}{s.active ? '' : ' (nonaktif)'}</option>
+        {/each}
+      </select>
+    </div>
+  {:else}
+    <!-- Store name always visible for non-switching users (kasir, manager, ...) -->
+    <div class="store-badge" title="Toko aktif">
+      <Icon icon="mdi:store-outline" width="14" height="14" />
+      <span>{activeName || 'Toko'}</span>
+    </div>
+  {/if}
 
   {#each nav as group (group.id)}
     {#if group.href}
@@ -113,5 +182,53 @@
   }
   nav details summary::-webkit-details-marker {
     display: none;
+  }
+
+  .store-switcher {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0 0.25rem 0.75rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-soft);
+    transition: opacity 150ms;
+  }
+  .store-switcher.busy {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .store-switcher label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+  .store-switcher select {
+    width: 100%;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.4rem;
+  }
+  .store-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0.25rem 0.75rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-soft);
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .store-badge span {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

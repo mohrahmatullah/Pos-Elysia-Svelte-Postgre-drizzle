@@ -50,6 +50,20 @@
       "when": 1789354009284,
       "tag": "0006_next_songbird",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789358582069,
+      "tag": "0007_shocking_silver_centurion",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789358664653,
+      "tag": "0008_gigantic_meggan",
+      "breakpoints": true
     }
   ]
 }

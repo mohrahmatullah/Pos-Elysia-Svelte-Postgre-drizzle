@@ -8,13 +8,14 @@
  *    but only for roles that have no permission rows yet (re-runs never overwrite UI edits)
  *  - Owner gets the full set via seed, not a runtime `if role === owner` rule
  */
-import { eq, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { hashPassword } from '../lib/password';
 import * as s from './schema';
 import { ROLE_PERMISSIONS } from '../lib/permissions';
 import { upsertPermissionCatalog } from './permission';
 import { grantMissingPermissionsToOwner } from './permission-catalog';
 import { db, pool } from './index';
+// (userStores used via s.userStores below)
 
 const DEFAULT_PASSWORD = 'Passw0rd!';
 
@@ -22,7 +23,9 @@ async function main() {
   console.log('Seeding...');
 
   // ----------------------------- Store (reuse first) -----------------------------
-  let [store] = await db.select().from(s.stores).limit(1);
+  // Deterministic: the OLDEST store is the original (limit(1) alone is unordered and
+  // can drift between runs when extra stores exist).
+  let [store] = await db.select().from(s.stores).orderBy(asc(s.stores.created_at)).limit(1);
   if (!store) {
     [store] = await db
       .insert(s.stores)
@@ -41,6 +44,49 @@ async function main() {
   } else {
     console.log('   Store reused');
   }
+
+  // ---------------------- Second store (multi-store demo) ------------------------
+  // Created once; owner gets a membership so they can switch between stores.
+  let [store2] = await db.select().from(s.stores).where(eq(s.stores.name, 'Toko Cabang Kelapa Gading')).limit(1);
+  if (!store2) {
+    [store2] = await db
+      .insert(s.stores)
+      .values({
+        name: 'Toko Cabang Kelapa Gading',
+        address: 'Jl. Boulevard Raya No. 45, Jakarta Utara',
+        phone: '021-555-0456',
+        invoice_prefix: 'CGD',
+        tax_rate: '11.00',
+      })
+      .returning();
+    console.log('   Second store created');
+  }
+
+  // -------------------- User-store memberships (multi-store) ---------------------
+  // Owner manages ALL stores; staff stay bound to their home store. New memberships
+  // are additive (onConflictDoNothing) so re-runs and UI edits are never clobbered.
+  const [ownerUser] = await db.select({ id: s.users.id }).from(s.users).where(eq(s.users.email, 'owner@pos.local')).limit(1);
+  if (ownerUser) {
+    await db
+      .insert(s.userStores)
+      .values([
+        { user_id: ownerUser.id, store_id: store.id },
+        { user_id: ownerUser.id, store_id: store2.id },
+      ])
+      .onConflictDoNothing();
+  }
+  const [managerUser] = await db.select({ id: s.users.id }).from(s.users).where(eq(s.users.email, 'manager@pos.local')).limit(1);
+  if (managerUser) {
+    await db
+      .insert(s.userStores)
+      .values([{ user_id: managerUser.id, store_id: store.id }, { user_id: managerUser.id, store_id: store2.id }])
+      .onConflictDoNothing();
+  }
+  const [cashierUser] = await db.select({ id: s.users.id }).from(s.users).where(eq(s.users.email, 'cashier@pos.local')).limit(1);
+  if (cashierUser) {
+    await db.insert(s.userStores).values([{ user_id: cashierUser.id, store_id: store.id }]).onConflictDoNothing();
+  }
+  console.log('   User-store memberships ensured (owner: all stores)');
 
   // ------------------------- Roles (upsert by unique name) -----------------------
   await db.insert(s.roles).values([{ name: 'owner' }, { name: 'manager' }, { name: 'cashier' }]).onConflictDoNothing();
@@ -175,6 +221,7 @@ async function main() {
 
   // Top-level standalone
   await ensureItem({ label: 'Dashboard', href: '/', icon: 'mdi:view-dashboard-outline', permission_code: 'dashboard.view', parent_id: null, sort_order: 10 });
+  await ensureItem({ label: 'Toko', href: '/stores', icon: 'mdi:store-cog-outline', permission_code: 'store.view', parent_id: null, sort_order: 15 });
 
   // Group: Master Data
   const masterId = await ensureGroup('Master Data', 'mdi:database-outline', 20);

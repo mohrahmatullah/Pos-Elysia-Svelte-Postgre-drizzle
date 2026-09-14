@@ -4,12 +4,15 @@
   import SkeletonCard from '$lib/components/SkeletonCard.svelte';
   import { toastError } from '$lib/stores/toast';
   import { Icon } from '$lib/icons';
+  import { userStores, currentStoreId } from '$lib/stores/multiStore';
 
   interface Dashboard {
     summary: { sales_today: string; transactions: number; avg_transaction: string; gross: string; discount: string; tax: string; net: string };
     low_stock: { id: string; name: string; sku: string; stock: number; minimum_stock: number }[];
     top_products: { product_name: string; quantity: number; revenue: string }[];
     trend: { date: string; total: string; transactions: number }[];
+    /** Owner-only (store.switch): transaction totals per store. */
+    per_store?: { store_id: string; store_name: string; transactions: number; total: string }[];
   }
 
   let data = $state<Dashboard | null>(null);
@@ -66,6 +69,34 @@
       {/each}
     </div>
   {:else if data}
+    <!-- Owner (multi-store) sees a per-store breakdown; staff see their own store -->
+    {#if data.per_store}
+      <div class="card per-store">
+        <h3><Icon icon="mdi:store-multiple-outline" width="17" height="17" /> Transaksi per Toko</h3>
+        {#if data.per_store.length === 0}
+          <p class="muted">Belum ada transaksi di semua toko.</p>
+        {:else}
+          <table>
+            <thead><tr><th>Toko</th><th class="right">Transaksi</th><th class="right">Total</th></tr></thead>
+            <tbody>
+              {#each data.per_store as s (s.store_id)}
+                <tr class:current={s.store_id === $currentStoreId}>
+                  <td>{s.store_name}</td>
+                  <td class="right">{s.transactions}</td>
+                  <td class="right"><strong>{formatIDR(s.total)}</strong></td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      </div>
+    {:else}
+      <p class="muted scope-note">
+        <Icon icon="mdi:store-outline" width="14" height="14" />
+        Data toko: <strong>{$userStores.find((s) => s.id === $currentStoreId)?.name ?? 'toko kamu'}</strong>
+      </p>
+    {/if}
+
     <div class="cards">
       <div class="card"><div class="muted small">Penjualan</div><div class="big">{formatIDR(data.summary.net)}</div></div>
       <div class="card"><div class="muted small">Transaksi</div><div class="big">{data.summary.transactions}</div></div>
@@ -131,6 +162,41 @@
 </div>
 
 <style>
+  .scope-note {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: -0.4rem 0 0.8rem;
+    font-size: 0.85rem;
+  }
+  .per-store {
+    margin-bottom: 1rem;
+  }
+  .per-store h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.6rem;
+    font-size: 0.95rem;
+  }
+  .per-store table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  .per-store th,
+  .per-store td {
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .per-store th.right,
+  .per-store td.right {
+    text-align: right;
+  }
+  .per-store tr.current td:first-child {
+    font-weight: 600;
+  }
   .cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
