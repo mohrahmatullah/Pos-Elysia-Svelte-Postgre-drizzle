@@ -383,6 +383,8 @@ export const sales = pgTable(
     subtotal: numeric('subtotal', { precision: 18, scale: 2 }).notNull(),
     discount: numeric('discount', { precision: 18, scale: 2 }).notNull().default('0'),
     tax: numeric('tax', { precision: 18, scale: 2 }).notNull().default('0'),
+    /** Rounding difference added to make grand_total a multiple of Rp 100 (ceil). */
+    rounding: numeric('rounding', { precision: 18, scale: 2 }).notNull().default('0'),
     grand_total: numeric('grand_total', { precision: 18, scale: 2 }).notNull(),
     idempotency_key: text('idempotency_key'),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,0 +1,1 @@
+ALTER TABLE "sales" ADD COLUMN "rounding" numeric(18, 2) DEFAULT '0' NOT NULL;

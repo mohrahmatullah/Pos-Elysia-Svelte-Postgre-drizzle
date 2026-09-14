@@ -37,6 +37,8 @@ export interface CartTotals {
   subtotal: number;
   discount: number;
   tax: number;
+  /** Rounding added to grand total (ceil to Rp 100 so change is handable). */
+  rounding: number;
   grandTotal: number;
 }
 
@@ -61,7 +63,12 @@ export const totals = derived<[typeof cart, typeof orderDiscount, typeof orderDi
     const discount = Math.min(discountRp, subtotal);
     const taxable = subtotal - discount;
     const tax = Math.round(taxable * 0.11);
-    return { subtotal, discount, tax, grandTotal: taxable + tax };
+    // Round the payable total UP to the nearest Rp 100 (smallest coin) so the
+    // cashier never owes unpayable change. Mirrors the server's checkout math.
+    // Values here are whole rupiah, so Rp 100 = 100 units.
+    const raw = taxable + tax;
+    const grandTotal = Math.ceil(raw / 100) * 100;
+    return { subtotal, discount, tax, rounding: grandTotal - raw, grandTotal };
   },
 );
 

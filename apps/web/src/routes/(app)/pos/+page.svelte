@@ -71,6 +71,7 @@
     discount: string;
     tax: string;
     subtotal: string;
+    rounding?: string;
     payments: { method: string; amount: string }[];
     items: { product_name: string; sku: string | null; quantity: number; unit_price: string; subtotal: string }[];
   }
@@ -87,6 +88,24 @@
   });
 
   const change = $derived(Math.max(0, amountPaid - $totals.grandTotal));
+
+  // Change breakdown into cash denominations so the cashier knows exactly which
+  // notes/coins to hand back. Exact to the nearest Rp 100; an odd remainder
+  // (rare, from fractional totals) is shown separately.
+  const DENOMS = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500, 200, 100] as const;
+  function changeBreakdown(amount: number): { denom: number; count: number }[] {
+    let rest = Math.floor(Math.max(0, Math.round(amount)));
+    const out: { denom: number; count: number }[] = [];
+    for (const d of DENOMS) {
+      if (rest < d) continue;
+      const count = Math.floor(rest / d);
+      rest -= count * d;
+      out.push({ denom: d, count });
+    }
+    return out;
+  }
+  const changeDenoms = $derived(changeBreakdown(change));
+  const changeRemainder = $derived(Math.max(0, Math.round(change)) - changeDenoms.reduce((a, b) => a + b.count * b.denom, 0));
 
   onMount(async () => {
     try {
@@ -272,6 +291,9 @@
             <div class="row muted small"><span>Diskon umum/produk diterapkan</span><span>−{formatIDR(effectiveDiscountRp)}</span></div>
           {/if}
           <div class="row"><span>Pajak (11%)</span><span>{formatIDR($totals.tax)}</span></div>
+          {#if $totals.rounding > 0}
+            <div class="row muted small"><span>Pembulatan ke Rp 100</span><span>+{formatIDR($totals.rounding)}</span></div>
+          {/if}
           <div class="row grand"><span>Total</span><span>{formatIDR($totals.grandTotal)}</span></div>
         </div>
 
@@ -299,13 +321,34 @@
       <input id="paid" type="number" bind:value={amountPaid} min={$totals.grandTotal} />
       <label for="ref">Referensi (opsional)</label>
       <input id="ref" bind:value={referenceNumber} placeholder="No. referensi transfer/kartu" />
-      <div class="row change"><span>Kembalian</span><strong>{formatIDR(change)}</strong></div>
+      <div class="pay-summary">
+        <div class="ps-row"><span>Total belanja</span><span>{formatIDR($totals.grandTotal)}</span></div>
+        <div class="ps-row"><span>Uang dibayarkan</span><span>{formatIDR(amountPaid)}</span></div>
+        <div class="ps-row change"><span>Kembalian</span><strong>{formatIDR(change)}</strong></div>
+        {#if change > 0 && changeDenoms.length > 0}
+          <div class="denoms">
+            <span class="muted small">Pecahan kembalian:</span>
+            <div class="denom-chips">
+              {#each changeDenoms as b (b.denom)}
+                <span class="denom-chip">{b.count} × {formatIDR(b.denom)}</span>
+              {/each}
+              {#if changeRemainder > 0}
+                <span class="denom-chip odd">sisa {formatIDR(changeRemainder)}</span>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
       <div class="quick-cash">
-        {#each [10000, 20000, 50000, 100000] as v (v)}
-          <button onclick={() => (amountPaid = $totals.grandTotal + v)}>+{formatIDR(v)}</button>
+        <!-- Uang yang dibayarkan pembeli: klik = set nominal uang pecahan -->
+        {#each [5000, 10000, 20000, 50000, 100000] as v (v)}
+          <button class:under={v < $totals.grandTotal} onclick={() => (amountPaid = v)}>{formatIDR(v)}</button>
         {/each}
         <button onclick={() => (amountPaid = $totals.grandTotal)}>PAS</button>
       </div>
+      {#if amountPaid > 0 && amountPaid < $totals.grandTotal}
+        <p class="error-text">Uang kurang Rp {formatIDR($totals.grandTotal - amountPaid).replace('Rp ', '')} dari total.</p>
+      {/if}
       {#if amountPaid < $totals.grandTotal}
         <p class="error-text">Jumlah bayar kurang dari total.</p>
       {/if}
@@ -339,9 +382,17 @@
         <div class="row"><span>Subtotal</span><span>{formatIDR(receipt.subtotal)}</span></div>
         <div class="row"><span>Diskon</span><span>{formatIDR(receipt.discount)}</span></div>
         <div class="row"><span>Pajak</span><span>{formatIDR(receipt.tax)}</span></div>
+        {#if receipt.rounding && Number.parseFloat(receipt.rounding) > 0}
+          <div class="row"><span>Pembulatan</span><span>+{formatIDR(receipt.rounding)}</span></div>
+        {/if}
         <div class="row grand"><span>TOTAL</span><span>{formatIDR(receipt.grand_total)}</span></div>
         <div class="row"><span>Bayar ({receipt.payments[0]?.method})</span><span>{formatIDR(receipt.payments[0]?.amount ?? 0)}</span></div>
         <div class="row"><span>Kembalian</span><span>{formatIDR(Math.max(0, Number(receipt.payments[0]?.amount ?? 0) - Number(receipt.grand_total)))}</span></div>
+        {#if changeDenoms.length > 0 && change > 0}
+          <div class="center muted small denoms-line">
+            {changeDenoms.map((b) => `${b.count}×${formatIDR(b.denom)}`).join(' + ')}
+          </div>
+        {/if}
         <p class="center muted">Terima kasih telah berbelanja!</p>
       </div>
       <div class="actions">
@@ -521,9 +572,56 @@
     margin-top: 0.7rem;
     flex-wrap: wrap;
   }
+  .pay-summary {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.8rem;
+    margin-top: 0.8rem;
+  }
+  .ps-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.15rem 0;
+    font-size: 0.95rem;
+  }
+  .ps-row.change {
+    border-top: 1px dashed var(--border);
+    margin-top: 0.3rem;
+    padding-top: 0.45rem;
+    font-size: 1.15rem;
+    color: var(--green);
+  }
+  .denoms {
+    margin-top: 0.5rem;
+  }
+  .denom-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+  }
+  .denom-chip {
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .denom-chip.odd {
+    color: var(--amber);
+  }
+  .denoms-line {
+    font-size: 0.75rem;
+    margin: 0.1rem 0 0;
+  }
   .quick-cash button {
     font-size: 0.8rem;
     padding: 0.35rem 0.6rem;
+  }
+  .quick-cash button.under {
+    opacity: 0.55;
   }
   .actions {
     display: flex;

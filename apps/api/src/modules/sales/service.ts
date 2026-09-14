@@ -177,11 +177,18 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
     // subtotal stays pre-order-discount (PRD 29 pipeline display), discount carries
     // it, and tax/grand already reflect the reduced taxable amount. Without this,
     // sales.discount always stored 0 and receipts showed "Diskon Rp 0".
+    // Grand total is rounded UP to the nearest Rp 100 (smallest coin) so change is
+    // always handable in cash; the difference is stored as `rounding`.
+    // (Rp 100 = 100 rupiah = 10,000 cents in our integer-cents math.)
+    const rawGrand = totals.grandTotal;
+    const roundedGrand = Math.ceil(rawGrand / 10_000) * 10_000;
+    const roundingCents = roundedGrand - rawGrand;
     const displayTotals = {
       subtotal: pre.subtotal,
       discount: Math.min(orderDiscountCents, pre.subtotal),
       tax: totals.tax,
-      grandTotal: totals.grandTotal,
+      rounding: roundingCents,
+      grandTotal: roundedGrand,
     };
 
     // Payment validation (PRD 6.4): reject underpayment unless partial enabled (not in MVP).
@@ -202,6 +209,7 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
         subtotal: fromCents(displayTotals.subtotal),
         discount: fromCents(displayTotals.discount),
         tax: fromCents(displayTotals.tax),
+        rounding: fromCents(displayTotals.rounding),
         grand_total: fromCents(displayTotals.grandTotal),
         idempotency_key: input.idempotencyKey ?? null,
       })
