@@ -14,7 +14,10 @@ export class ApiCallError extends Error {
   }
 }
 
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+// Same-origin by default (dev: Vite proxies /api → localhost:3001, so the
+// browser makes a single non-preflighted request per API call). Set
+// VITE_API_URL to target an absolute API origin (e.g. in production).
+const BASE = import.meta.env.VITE_API_URL ?? '';
 const API = `${BASE}/api/v1`;
 
 let accessToken: string | null = null;
