@@ -1,5 +1,5 @@
 /** Sales service (PRD 6.2, 26, 27, 29): atomic checkout, idempotency, stock locking. */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { payments, products, saleItems, sales, stockMovements, stores } from '../../db/schema';
 import type { DiscountType } from '../../db/schema';
@@ -262,11 +262,14 @@ export async function checkout(input: CheckoutInput, actor: Actor) {
   return result;
 }
 
-export async function getSaleDetail(saleId: string, storeId: string) {
+export async function getSaleDetail(saleId: string, storeId: string | null) {
+  // storeId = null skips store scoping (used by store.switch users; the route
+  // validates the sale's store against their memberships afterwards).
+  const where = storeId ? and(eq(sales.id, saleId), eq(sales.store_id, storeId)) : eq(sales.id, saleId);
   const [sale] = await db
     .select()
     .from(sales)
-    .where(and(eq(sales.id, saleId), eq(sales.store_id, storeId)))
+    .where(where)
     .limit(1);
   if (!sale) throw Errors.saleNotFound();
   const items = await db.select().from(saleItems).where(eq(saleItems.sale_id, saleId));
@@ -274,8 +277,8 @@ export async function getSaleDetail(saleId: string, storeId: string) {
   return { ...sale, items, payments: pays };
 }
 
-export async function listSales(opts: { storeId: string; page: number; limit: number; offset: number; search?: string; cashierId?: string; status?: string }) {
-  const conditions = [eq(sales.store_id, opts.storeId)];
+export async function listSales(opts: { storeIds: string[]; page: number; limit: number; offset: number; search?: string; cashierId?: string; status?: string }) {
+  const conditions = [inArray(sales.store_id, opts.storeIds)];
   if (opts.search) conditions.push(sql`${sales.invoice_number} ILIKE ${'%' + opts.search + '%'}`);
   if (opts.cashierId) conditions.push(eq(sales.cashier_id, opts.cashierId));
   if (opts.status) conditions.push(sql`${sales.status}::text = ${opts.status}`);

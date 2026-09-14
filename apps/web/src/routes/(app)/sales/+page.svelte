@@ -12,6 +12,7 @@
     status: string;
     grand_total: string;
     created_at: string;
+    store_id: string;
   }
   interface SaleDetail extends SaleRow {
     subtotal: string;

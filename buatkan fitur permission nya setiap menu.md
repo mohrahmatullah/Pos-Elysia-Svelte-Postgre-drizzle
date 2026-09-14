@@ -240,3 +240,8 @@ untuk diskon ada 2 jenis, bisa persen bisa juga nominal, tolong sesuaikan kembal
 
 tolong dong pada pos nya
 fitur kembalian nya tinggal berapa di detailkan, uang yang di bayarkan nya berapa
+
+padahal Toko Cabang Kelapa Gading belum ada transaksi nya tapi kenapa di dashboard  Penjualan, Transaksi, Rata-rata dll sudah ada datanya apakah belum di filter berdasarkan toko,
+
+- Background percantik, bisa switch, misal dark, white dll, masing role punya fitur itu. mau di simpan di store setting juga boleh
+- yang existing saat ini fitur retail, tambahkan untuk pos resto , untuk resto misal ada table, ada yang kitchen, fitur nya bedain aja, karena ini sudah beda konsep bisnis, jadi nanti ada pilihan type bisnis di store nya retail ata resto

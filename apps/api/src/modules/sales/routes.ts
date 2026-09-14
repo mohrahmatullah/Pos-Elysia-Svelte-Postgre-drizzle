@@ -1,8 +1,8 @@
 /** Sales routes (PRD 6, 7, 18): list/detail/checkout/cancel/return. */
 import Elysia, { t } from 'elysia';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { payments, products, saleItems, sales, stockMovements, users } from '../../db/schema';
+import { payments, products, saleItems, sales, stockMovements, userStores, users } from '../../db/schema';
 import { ok, handleRouteError, parsePagination, paginationMeta } from '../../lib/response';
 import { auth, requirePerm, hasRolePermission } from '../../middleware/auth';
 import { Errors } from '../../lib/errors';
@@ -21,8 +21,28 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
         // Permission-driven scoping (PRD 4.3): roles granted sales.cancel (owner/manager
         // by seed) manage sales and see all; others only see their own transactions.
         const isAll = hasRolePermission(user, 'sales.cancel');
+
+        // Multi-store: store.switch users (owner) may filter by any of their member
+        // stores; everyone else is locked to their active store.
+        let storeIds: string[];
+        if (hasRolePermission(user, 'store.switch')) {
+          const memberships = await db
+            .select({ id: userStores.store_id })
+            .from(userStores)
+            .where(eq(userStores.user_id, auth.userId));
+          const memberSet = new Set(memberships.map((m) => m.id));
+          if (query.store_id && memberSet.has(query.store_id)) {
+            storeIds = [query.store_id];
+          } else {
+            // Default: active store (also covers an invalid/non-member store_id).
+            storeIds = [auth.storeId];
+          }
+        } else {
+          storeIds = [auth.storeId];
+        }
+
         const result = await listSales({
-          storeId: auth.storeId,
+          storeIds,
           page,
           limit,
           offset,
@@ -41,6 +61,7 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
           search: t.Optional(t.String()),
           cashier_id: t.Optional(t.String()),
           status: t.Optional(t.String()),
+          store_id: t.Optional(t.String()),
           page: t.Optional(t.String()),
           limit: t.Optional(t.String()),
         }),
@@ -52,7 +73,16 @@ export const saleRoutes = new Elysia({ prefix: '/sales' })
     async ({ params, user }) => {
       try {
         const auth = requirePerm(user, 'sales.view');
-        const detail = await getSaleDetail(params.id, auth.storeId);
+        const detail = await getSaleDetail(params.id, null);
+        // Store scope: active store, or any store the user is a member of.
+        if (detail.store_id !== auth.storeId) {
+          const [member] = await db
+            .select({ id: userStores.id })
+            .from(userStores)
+            .where(and(eq(userStores.user_id, auth.userId), eq(userStores.store_id, detail.store_id)))
+            .limit(1);
+          if (!member) throw Errors.notFound('Sale tidak ditemukan');
+        }
         // Without sales.cancel, users can only view their own sales (PRD 4.3).
         if (!hasRolePermission(user, 'sales.cancel') && detail.cashier_id !== auth.userId) throw Errors.forbidden();
         return ok(detail);
