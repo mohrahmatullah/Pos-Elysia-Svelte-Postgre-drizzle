@@ -106,6 +106,17 @@
     'user.manage': ['role'],
   };
 
+  /** Within-resource code splits: menus gated by one code of a shared resource get
+   * an explicit slice of that resource's codes instead of the whole group. The
+   * Transaksi menus share the `sales` resource: POS / Kasir makes sales
+   * (sales.create) while Riwayat Sales reads, cancels, and returns them
+   * (sales.view / sales.cancel / sales.return) — so Riwayat Sales renders its own
+   * codes instead of falling back to the "inherited" note. */
+  const MENU_CODE_SPLIT: Record<string, string[]> = {
+    'sales.create': ['sales.create'],
+    'sales.view': ['sales.view', 'sales.cancel', 'sales.return'],
+  };
+
   /** Build the sidebar-mirrored tree + collect resources not covered by any menu. */
   function rebuildTree(): void {
     const byId = new Map<string, MenuNode>();
@@ -131,15 +142,13 @@
     }
 
     const rendered = new Set<string>();
-    /** menu id -> explicit code list (its own permission + extra resource groups). */
-    const overrides = new Map<string, string[]>();
-    /** menu id -> resource claimed wholesale (codes resolved after the walk). */
-    const claimed = new Map<string, string>();
+    /** menu id -> recorded claim: an explicit code list or a whole resource key. */
+    const claims = new Map<string, { kind: 'codes'; codes: string[] } | { kind: 'resource'; res: string }>();
 
-    // Pass 1: page nodes (with href) or childless nodes claim their resource first,
-    // so codes render at the actual page (Products), not its group header. Nodes
-    // with an override (EXTRA_RESOURCES_BY_MENU_PERM) take their own code plus the
-    // extra resources' codes instead of being marked "inherited".
+    // Pass 1: record what each node renders. Page nodes (with href) or childless
+    // nodes claim their resource so codes render at the actual page (Products),
+    // not its group header. Overrides (EXTRA_RESOURCES_BY_MENU_PERM) and splits
+    // (MENU_CODE_SPLIT) record explicit code lists instead of whole resources.
     const claim = (node: MenuNode): void => {
       if (!node.permission_code) {
         node.children.forEach(claim);
@@ -147,33 +156,52 @@
       }
       const perm = node.permission_code;
       const res = perm.split('.')[0];
-      const extras = (EXTRA_RESOURCES_BY_MENU_PERM[perm] ?? []).filter((e) => !rendered.has(e));
-      if (extras.length > 0) {
-        overrides.set(node.id, [perm, ...extras.flatMap((e) => resources[e] ?? [])]);
+      const split = MENU_CODE_SPLIT[perm];
+      const extras = EXTRA_RESOURCES_BY_MENU_PERM[perm] ?? [];
+      if ((split && split.length > 0) || extras.length > 0) {
+        claims.set(node.id, {
+          kind: 'codes',
+          codes: [...new Set([...(split ?? [perm]), ...extras.flatMap((e) => resources[e] ?? [])])],
+        });
+        rendered.add(res);
         extras.forEach((e) => rendered.add(e));
       } else if (rendered.has(res)) {
         node.inherited = true;
       } else if (node.href || node.children.length === 0) {
-        claimed.set(node.id, res);
+        claims.set(node.id, { kind: 'resource', res });
         rendered.add(res);
       }
       node.children.forEach(claim);
     };
     roots.forEach(claim);
 
-    // Codes explicitly assigned to an override node must not repeat in the group
-    // sharing its resource (user.manage moves out of the Users page group).
-    const taken = new Set<string>();
-    for (const codes of overrides.values()) {
-      for (const c of codes) taken.add(c);
-    }
-    for (const [menuId, res] of claimed) {
+    // Resolve claims so no code renders twice: explicit lists first (walk order),
+    // then wholesale nodes take the rest of their resource. A claim that resolves
+    // to nothing falls back to the inherited note.
+    const assigned = new Set<string>();
+    for (const [menuId, c] of claims) {
+      if (c.kind !== 'codes') continue;
       const node = byId.get(menuId);
-      if (node) node.codes = (resources[res] ?? []).filter((c) => !taken.has(c));
+      if (!node) continue;
+      const mine = c.codes.filter((code) => !assigned.has(code));
+      if (mine.length > 0) {
+        node.codes = mine;
+        mine.forEach((code) => assigned.add(code));
+      } else {
+        node.inherited = true;
+      }
     }
-    for (const [menuId, codes] of overrides) {
+    for (const [menuId, c] of claims) {
+      if (c.kind !== 'resource') continue;
       const node = byId.get(menuId);
-      if (node) node.codes = codes;
+      if (!node) continue;
+      const rest = (resources[c.res] ?? []).filter((code) => !assigned.has(code));
+      if (rest.length > 0) {
+        node.codes = rest;
+        rest.forEach((code) => assigned.add(code));
+      } else {
+        node.inherited = true;
+      }
     }
 
     // Pass 2: any remaining unclaimed resource renders at its node (e.g. a
@@ -182,8 +210,12 @@
       if (node.permission_code && !node.inherited && node.codes.length === 0) {
         const res = node.permission_code.split('.')[0];
         if (!rendered.has(res)) {
-          node.codes = codesForCode(node.permission_code).filter((c) => !taken.has(c));
-          rendered.add(res);
+          const codes = codesForCode(node.permission_code).filter((c) => !assigned.has(c));
+          if (codes.length > 0) {
+            node.codes = codes;
+            codes.forEach((c) => assigned.add(c));
+            rendered.add(res);
+          }
         }
       }
       node.children.forEach(claimLeftover);
