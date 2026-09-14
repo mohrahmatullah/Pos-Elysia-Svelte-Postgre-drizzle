@@ -95,6 +95,17 @@
     return list && list.length > 0 ? list : [code];
   }
 
+  /** Menus that own codes beyond their own permission's resource group.
+   * Key: the menu's permission_code; value: additional resource keys rendered at
+   * that node. The Role & Permission menu is gated by user.manage (a user.* code),
+   * but the page also manages the whole role.* group — so those codes must group
+   * here (inside Sistem) instead of dangling in a separate "Roles" card, and
+   * user.manage itself moves here rather than repeating under the Users page.
+   */
+  const EXTRA_RESOURCES_BY_MENU_PERM: Record<string, string[]> = {
+    'user.manage': ['role'],
+  };
+
   /** Build the sidebar-mirrored tree + collect resources not covered by any menu. */
   function rebuildTree(): void {
     const byId = new Map<string, MenuNode>();
@@ -120,28 +131,58 @@
     }
 
     const rendered = new Set<string>();
+    /** menu id -> explicit code list (its own permission + extra resource groups). */
+    const overrides = new Map<string, string[]>();
+    /** menu id -> resource claimed wholesale (codes resolved after the walk). */
+    const claimed = new Map<string, string>();
+
     // Pass 1: page nodes (with href) or childless nodes claim their resource first,
-    // so codes render at the actual page (Products), not its group header.
+    // so codes render at the actual page (Products), not its group header. Nodes
+    // with an override (EXTRA_RESOURCES_BY_MENU_PERM) take their own code plus the
+    // extra resources' codes instead of being marked "inherited".
     const claim = (node: MenuNode): void => {
-      if (node.permission_code) {
-        const res = node.permission_code.split('.')[0];
-        if (rendered.has(res)) {
-          node.inherited = true;
-        } else if (node.href || node.children.length === 0) {
-          node.codes = codesForCode(node.permission_code);
-          rendered.add(res);
-        }
+      if (!node.permission_code) {
+        node.children.forEach(claim);
+        return;
+      }
+      const perm = node.permission_code;
+      const res = perm.split('.')[0];
+      const extras = (EXTRA_RESOURCES_BY_MENU_PERM[perm] ?? []).filter((e) => !rendered.has(e));
+      if (extras.length > 0) {
+        overrides.set(node.id, [perm, ...extras.flatMap((e) => resources[e] ?? [])]);
+        extras.forEach((e) => rendered.add(e));
+      } else if (rendered.has(res)) {
+        node.inherited = true;
+      } else if (node.href || node.children.length === 0) {
+        claimed.set(node.id, res);
+        rendered.add(res);
       }
       node.children.forEach(claim);
     };
     roots.forEach(claim);
+
+    // Codes explicitly assigned to an override node must not repeat in the group
+    // sharing its resource (user.manage moves out of the Users page group).
+    const taken = new Set<string>();
+    for (const codes of overrides.values()) {
+      for (const c of codes) taken.add(c);
+    }
+    for (const [menuId, res] of claimed) {
+      const node = byId.get(menuId);
+      if (node) node.codes = (resources[res] ?? []).filter((c) => !taken.has(c));
+    }
+    for (const [menuId, codes] of overrides) {
+      const node = byId.get(menuId);
+      if (node) node.codes = codes;
+    }
+
     // Pass 2: any remaining unclaimed resource renders at its node (e.g. a
     // permission-less-link group whose children use other resources).
     const claimLeftover = (node: MenuNode): void => {
       if (node.permission_code && !node.inherited && node.codes.length === 0) {
         const res = node.permission_code.split('.')[0];
         if (!rendered.has(res)) {
-          node.codes = codesForCode(node.permission_code);
+          node.codes = codesForCode(node.permission_code).filter((c) => !taken.has(c));
           rendered.add(res);
         }
       }
@@ -159,6 +200,16 @@
   // The permission matrix is saved via PUT /permissions/role/:roleId, which the
   // backend gates with user.manage — so editing must require exactly that.
   const canEditPerms = $derived(!isOwner && !saving && !loadingPerms && $permissions.permissions.has('user.manage'));
+
+  // Collapsible group cards: menu node id or "extra:<resource>" -> expanded?
+  // DEFAULT = minimized: groups start collapsed; only explicitly expanded ones open.
+  let expanded = $state<Record<string, boolean>>({});
+  const isCollapsed = (id: string): boolean => expanded[id] !== true;
+  function toggleCollapse(id: string): void {
+    expanded[id] = !expanded[id]; // undefined -> true (expand), true -> false, false -> true
+  }
+  /** How many of the group's codes are currently granted (shown in the chip). */
+  const selectedOf = (codes: string[]): number => codes.filter((c) => selectedCodes.has(c)).length;
   const dirty = $derived(
     selectedCodes.size !== initialCodes.size || [...selectedCodes].some((c) => !initialCodes.has(c)),
   );
@@ -416,7 +467,21 @@
 
         {#snippet menuNode(node: MenuNode, depth: number)}
           <div class="card group node-{depth}">
-            <div class="group-head">
+            <div
+              class="group-head"
+              role="button"
+              tabindex="0"
+              aria-expanded={!isCollapsed(node.id)}
+              title={isCollapsed(node.id) ? 'Expand grup' : 'Minimize grup'}
+              onclick={() => toggleCollapse(node.id)}
+              onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleCollapse(node.id))}
+            >
+              <Icon
+                class="chev"
+                icon={isCollapsed(node.id) ? 'mdi:chevron-right' : 'mdi:chevron-down'}
+                width="18"
+                height="18"
+              />
               <div class="group-title">
                 {#if node.icon && isIconifyName(node.icon)}
                   <Icon icon={node.icon} width="17" height="17" />
@@ -426,52 +491,92 @@
                 <h3>{node.label}</h3>
                 {#if node.href}<span class="muted small mono">{node.href}</span>{/if}
               </div>
-              {#if node.codes.length > 0}
-                <button
-                  class="ghost"
-                  disabled={isOwner}
-                  onclick={() => toggleCodes(node.codes, !isAllSelected(node.codes))}
-                >
-                  {isAllSelected(node.codes) ? 'Unselect All' : 'Semua'}
-                </button>
-              {/if}
+              <div class="group-actions">
+                {#if node.codes.length > 0}
+                  <span class="count-chip" class:full={selectedOf(node.codes) === node.codes.length}>
+                    {selectedOf(node.codes)}/{node.codes.length}
+                  </span>
+                  <button
+                    class="ghost"
+                    disabled={isOwner}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      toggleCodes(node.codes, !isAllSelected(node.codes));
+                    }}
+                  >
+                    {isAllSelected(node.codes) ? 'Unselect All' : 'Semua'}
+                  </button>
+                {/if}
+              </div>
             </div>
 
-            {#if node.codes.length > 0}
-              <div class="code-list">
-                {#each node.codes as code (code)}
-                  {@render nodePermRow(code)}
-                {/each}
-              </div>
-            {:else if node.inherited}
-              <p class="muted small inherited-note">Permission-nya diatur pada menu induk di atas.</p>
-            {/if}
+            {#if !isCollapsed(node.id)}
+              {#if node.codes.length > 0}
+                <div class="code-list">
+                  {#each node.codes as code (code)}
+                    {@render nodePermRow(code)}
+                  {/each}
+                </div>
+              {:else if node.inherited}
+                <p class="muted small inherited-note">Permission-nya diatur pada menu induk di atas.</p>
+              {/if}
 
-            {#if node.children.length > 0}
-              <div class="children">
-                {#each node.children as child (child.id)}
-                  {@render menuNode(child, Math.min(depth + 1, 2))}
-                {/each}
-              </div>
+              {#if node.children.length > 0}
+                <div class="children">
+                  {#each node.children as child (child.id)}
+                    {@render menuNode(child, Math.min(depth + 1, 2))}
+                  {/each}
+                </div>
+              {/if}
             {/if}
           </div>
         {/snippet}
 
         {#each extraGroups as extra (extra.key)}
           <div class="card group">
-            <div class="group-head">
+            <div
+              class="group-head"
+              role="button"
+              tabindex="0"
+              aria-expanded={!isCollapsed('extra:' + extra.key)}
+              title={isCollapsed('extra:' + extra.key) ? 'Expand grup' : 'Minimize grup'}
+              onclick={() => toggleCollapse('extra:' + extra.key)}
+              onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleCollapse('extra:' + extra.key))}
+            >
+              <Icon
+                class="chev"
+                icon={isCollapsed('extra:' + extra.key) ? 'mdi:chevron-right' : 'mdi:chevron-down'}
+                width="18"
+                height="18"
+              />
               <div class="group-title">
                 <h3>{extra.title}</h3>
               </div>
-              <button class="ghost" disabled={isOwner} onclick={() => toggleCodes(extra.codes, !isAllSelected(extra.codes))}>
-                {isAllSelected(extra.codes) ? 'Unselect All' : 'Semua'}
-              </button>
+              <div class="group-actions">
+                {#if extra.codes.length > 0}
+                  <span class="count-chip" class:full={selectedOf(extra.codes) === extra.codes.length}>
+                    {selectedOf(extra.codes)}/{extra.codes.length}
+                  </span>
+                  <button
+                    class="ghost"
+                    disabled={isOwner}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      toggleCodes(extra.codes, !isAllSelected(extra.codes));
+                    }}
+                  >
+                    {isAllSelected(extra.codes) ? 'Unselect All' : 'Semua'}
+                  </button>
+                {/if}
+              </div>
             </div>
-            <div class="code-list">
-              {#each extra.codes as code (code)}
-                {@render nodePermRow(code)}
-              {/each}
-            </div>
+            {#if !isCollapsed('extra:' + extra.key)}
+              <div class="code-list">
+                {#each extra.codes as code (code)}
+                  {@render nodePermRow(code)}
+                {/each}
+              </div>
+            {/if}
           </div>
         {/each}
       {/if}
@@ -591,9 +696,18 @@
   .group-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.6rem;
+    gap: 0.4rem;
     margin-bottom: 0.4rem;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 6px;
+  }
+  .group-head:hover h3 {
+    color: var(--accent);
+  }
+  .group-head .chev {
+    color: var(--text-dim);
+    transition: transform 0.15s ease;
   }
   .group-title {
     display: flex;
@@ -601,6 +715,27 @@
     gap: 0.45rem;
     flex-wrap: wrap;
     min-width: 0;
+    flex: 1;
+  }
+  .group-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+  .count-chip {
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .count-chip.full {
+    background: rgba(46, 204, 113, 0.15);
+    border-color: transparent;
+    color: var(--green);
   }
   .group-title :global(svg) {
     color: var(--accent);
